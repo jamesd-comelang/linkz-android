@@ -39,8 +39,8 @@ import com.bitchat.android.onboarding.OnboardingCoordinator
 import com.bitchat.android.onboarding.OnboardingState
 import com.bitchat.android.onboarding.PermissionExplanationScreen
 import com.bitchat.android.onboarding.PermissionManager
-import com.bitchat.android.ui.ChatScreen
 import com.bitchat.android.ui.ChatViewModel
+import com.bitchat.android.ui.linkz.LinkzShell
 import com.bitchat.android.ui.OrientationAwareActivity
 import com.bitchat.android.ui.theme.LinkzTheme
 import com.bitchat.android.wifiaware.WifiAwareController
@@ -330,7 +330,11 @@ class MainActivity : OrientationAwareActivity() {
 
                 // Add the callback - this will be automatically removed when the activity is destroyed
                 onBackPressedDispatcher.addCallback(this, backCallback)
-                ChatScreen(viewModel = chatViewModel)
+                // Linkz home: the WeChat-style tab shell. It renders the
+                // existing ChatScreen itself for timelines, and the
+                // private-chat sheet for DMs, so mesh/protocol code is
+                // untouched.
+                LinkzShell(viewModel = chatViewModel)
             }
             
             OnboardingState.ERROR -> {
