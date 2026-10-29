@@ -5,6 +5,7 @@ import android.os.Build
 import android.view.View
 import android.view.WindowInsetsController
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -14,6 +15,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 
@@ -85,6 +87,29 @@ internal val DarkLinkzColorScheme = darkColorScheme(
     error = Color(0xFFFF453A),
     onError = Color.Black
 )
+
+/** Fill and border for one chat bubble, WeChat-style. */
+data class LinkzBubbleStyle(val fill: Color, val border: Color)
+
+/**
+ * WeChat-style bubble colours, shared by text and media bubbles so the
+ * transcript stays consistent:
+ * - Own messages: light green in light mode, darker green in dark mode.
+ * - Incoming messages: the theme surface (white / dark grey).
+ * Body text stays `onSurface` in both cases, so links (secondary) and
+ * sender names (peer colours) stay legible. Dark mode is detected from
+ * the actual background luminance, not the system setting, because the
+ * theme preference can override the system.
+ */
+fun linkzBubbleStyle(isSelf: Boolean, colorScheme: ColorScheme): LinkzBubbleStyle {
+    val isDark = colorScheme.background.luminance() < 0.5f
+    return if (isSelf) {
+        val fill = if (isDark) Color(0xFF2E7D32) else Color(0xFF95EC69)
+        LinkzBubbleStyle(fill = fill, border = fill)
+    } else {
+        LinkzBubbleStyle(fill = colorScheme.surface, border = colorScheme.outlineVariant)
+    }
+}
 
 /**
  * The Linkz app theme. Same structure as [BitchatTheme] (system / light /

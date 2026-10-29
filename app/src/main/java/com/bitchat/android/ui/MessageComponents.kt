@@ -97,7 +97,7 @@ import com.bitchat.android.ui.theme.ChatVisualTokens
 import com.bitchat.android.ui.theme.LocalBitchatPalette
 import com.bitchat.android.ui.theme.MessageBodyTextStyle
 import com.bitchat.android.ui.theme.MessageSenderTextStyle
-import com.bitchat.android.ui.theme.colorForPeer
+import com.bitchat.android.ui.theme.linkzBubbleStyle
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -925,10 +925,10 @@ internal fun TextMessageLayout(
  * messages on the right and everyone else on the left, with the corner on the speaker's side
  * tightened into a subtle tail.
  *
- * The bubble is washed with the author's stable peer colour — the same identity-derived colour
- * the `@name` label and mention chips already use — so the speaker stays identifiable at a
- * glance without touching any surface, background, or theme colour. Body text keeps the
- * standard `onSurface` tone; only the bubble shell carries the identity.
+ * Linkz-style bubbles (see `linkzBubbleStyle`): own messages are solid
+ * green, incoming messages are the theme surface. Body text keeps the
+ * standard `onSurface` tone, so it stays legible on both fills; the
+ * sender's name still carries the author's peer colour in group chats.
  */
 @Composable
 private fun BubbleTextMessageLayout(
@@ -942,13 +942,10 @@ private fun BubbleTextMessageLayout(
     onLongPress: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val palette = LocalBitchatPalette.current
     val haptic = LocalHapticFeedback.current
     val context = LocalContext.current
 
-    val authorColor = remember(message, isSelf, palette) {
-        if (isSelf) palette.accentOrange else colorForPeer(peerIdentityForMessage(message), palette)
-    }
+    val bubbleStyle = linkzBubbleStyle(isSelf, MaterialTheme.colorScheme)
 
     val corner = ChatVisualTokens.BubbleCornerRadius
     val tail = ChatVisualTokens.BubbleTailRadius
@@ -1002,11 +999,11 @@ private fun BubbleTextMessageLayout(
                     .widthIn(max = maxBubbleWidth)
                     .border(
                         width = 1.dp,
-                        color = authorColor.copy(alpha = ChatVisualTokens.BubbleBorderAlpha),
+                        color = bubbleStyle.border,
                         shape = bubbleShape
                     )
                     .background(
-                        color = authorColor.copy(alpha = ChatVisualTokens.BubbleBackgroundAlpha),
+                        color = bubbleStyle.fill,
                         shape = bubbleShape
                     )
                     .padding(

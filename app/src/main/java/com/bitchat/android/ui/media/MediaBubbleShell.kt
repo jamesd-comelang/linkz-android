@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -28,22 +29,23 @@ import com.bitchat.android.ui.DeliveryStatusIcon
 import com.bitchat.android.ui.formatTextMessageMetadata
 import com.bitchat.android.ui.formatTextMessageSender
 import com.bitchat.android.ui.isFromSelf
-import com.bitchat.android.ui.peerIdentityForMessage
 import com.bitchat.android.ui.theme.BitchatFontFamily
 import com.bitchat.android.ui.theme.ChatVisualTokens
 import com.bitchat.android.ui.theme.LocalBitchatPalette
 import com.bitchat.android.ui.theme.MessageSenderTextStyle
-import com.bitchat.android.ui.theme.colorForPeer
+import com.bitchat.android.ui.theme.linkzBubbleStyle
 import java.text.SimpleDateFormat
 
 /**
  * Classic messenger shell for media messages (images, voice notes) in `ChatUiMode.Bubbles`,
- * mirroring the text-bubble treatment: the author's identity colour washes the fill and
- * hairline, the speaker-side corner tightens into a tail, the sender's name heads the first
- * bubble of a run, and the timestamp (plus delivery ticks for own private messages) rides
- * flush-right beneath the media. The shell itself is long-clickable so media bubbles always
- * open the message action sheet even when no sender label is shown and the media consumes
- * touches (voice-note player controls).
+ * mirroring the text-bubble treatment: Linkz-style fills (green for own,
+ * theme surface for incoming, see `linkzBubbleStyle`), the speaker-side
+ * corner tightens into a tail, the sender's name heads the first bubble
+ * of a run, and the timestamp (plus delivery ticks for own private
+ * messages) rides flush-right beneath the media. The shell itself is
+ * long-clickable so media bubbles always open the message action sheet
+ * even when no sender label is shown and the media consumes touches
+ * (voice-note player controls).
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -62,9 +64,7 @@ fun MediaBubbleShell(
     val haptic = LocalHapticFeedback.current
     val isSelf = message.isFromSelf(currentUserNickname, myPeerID)
 
-    val authorColor = remember(message, isSelf, palette) {
-        if (isSelf) palette.accentOrange else colorForPeer(peerIdentityForMessage(message), palette)
-    }
+    val bubbleStyle = linkzBubbleStyle(isSelf, MaterialTheme.colorScheme)
 
     val corner = ChatVisualTokens.BubbleCornerRadius
     val tail = ChatVisualTokens.BubbleTailRadius
@@ -82,11 +82,11 @@ fun MediaBubbleShell(
             modifier = Modifier
                 .border(
                     width = 1.dp,
-                    color = authorColor.copy(alpha = ChatVisualTokens.BubbleBorderAlpha),
+                    color = bubbleStyle.border,
                     shape = bubbleShape
                 )
                 .background(
-                    color = authorColor.copy(alpha = ChatVisualTokens.BubbleBackgroundAlpha),
+                    color = bubbleStyle.fill,
                     shape = bubbleShape
                 )
                 .combinedClickable(
