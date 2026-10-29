@@ -117,4 +117,24 @@ instead of inventing a server backend.
 
 ## Status
 
-- 2026-10-29: plan drafted and saved as this file. No UI work started.
+- 2026-10-29: plan drafted and saved as this file.
+- 2026-10-29: implementation started on branch `linkz/wechat-ui`
+  (local commits only, not pushed):
+  - `fb8ac05` Add Linkz WeChat-style UI plan
+  - `68cae0e` Add Linkz WeChat-style theme and shell components
+    (LinkzTheme, LinkzComponents, LinkzFormatting + unit tests)
+  - `660f644` Add WeChat-style 4-tab shell over the Bitchat engine
+    (Chats list, Contacts, Discover, Me; ChatScreen kept unchanged
+    for timelines, PrivateChatSheet kept for DMs)
+- Still to do: WeChat-style bubble recolour in the chat transcript
+  (own = solid green, incoming = white) — deferred, not faked: it
+  touches `BubbleTextMessageLayout` in MessageComponents.kt and needs
+  a full build + on-device check before landing.
+- Build verification, local: `assembleDebug` could NOT run in this VM.
+  Gradle's daemon TCP dispatch fails in this environment even for an
+  empty project, and the stable SDK repo has no platform 37 package
+  (build-tools 37 is present). The pure-Kotlin LinkzFormatting module
+  compiles cleanly with kotlinc, and the Compose files pass a kotlinc
+  syntax check (unresolved Android imports only, as expected without
+  the SDK). The real build gate is CI (`android-build.yml`, which runs
+  on pushes/PRs to main/develop) after this branch is pushed or PR'd.
