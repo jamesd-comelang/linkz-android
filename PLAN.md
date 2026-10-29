@@ -126,10 +126,13 @@ instead of inventing a server backend.
   - `660f644` Add WeChat-style 4-tab shell over the Bitchat engine
     (Chats list, Contacts, Discover, Me; ChatScreen kept unchanged
     for timelines, PrivateChatSheet kept for DMs)
-- Still to do: WeChat-style bubble recolour in the chat transcript
-  (own = solid green, incoming = white) — deferred, not faked: it
-  touches `BubbleTextMessageLayout` in MessageComponents.kt and needs
-  a full build + on-device check before landing.
+  - `b3fd15a` Use WeChat-style green and white chat bubbles
+    (own = light green / dark green, incoming = theme surface, in
+    both `BubbleTextMessageLayout` and `MediaBubbleShell`, via a
+    shared `linkzBubbleStyle` in LinkzTheme.kt; body text stays
+    `onSurface`, sender names keep peer colours)
+- Still to do: on-device check of the new bubbles and shell, and a
+  full build. See the build-verification note below.
 - Build verification, local: `assembleDebug` could NOT run in this VM.
   Gradle's daemon TCP dispatch fails in this environment even for an
   empty project, and the stable SDK repo has no platform 37 package
