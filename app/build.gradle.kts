@@ -31,7 +31,7 @@ android {
     if (releaseUiTests) testBuildType = "release"
 
     defaultConfig {
-        applicationId = "com.bitchat.droid"
+        applicationId = "com.linkz.droid"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
         versionCode = 42
