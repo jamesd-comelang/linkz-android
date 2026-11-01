@@ -1125,6 +1125,20 @@ class ChatViewModel(
         // Log current state after toggle
         logCurrentFavoriteState()
     }
+
+    // Thin wrappers so the Linkz Contacts tab can block and unblock peers
+    // through the existing PrivateChatManager; no protocol change.
+    fun blockPeer(peerID: String): Boolean {
+        return privateChatManager.blockPeer(peerID, meshServiceFacade)
+    }
+
+    fun unblockPeer(peerID: String): Boolean {
+        return privateChatManager.unblockPeer(peerID, meshServiceFacade)
+    }
+
+    fun isPeerBlocked(peerID: String): Boolean {
+        return privateChatManager.isPeerBlocked(peerID)
+    }
     
     private fun refreshPeerFavoritedUs() {
         try {

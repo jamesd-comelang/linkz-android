@@ -15,7 +15,15 @@ data class LinkzContact(
     val id: String,
     val displayName: String,
     val isFavorite: Boolean = false,
-    val isConnected: Boolean = false
+    val isConnected: Boolean = false,
+    val fingerprint: String? = null,
+    val isVerified: Boolean = false,
+    val isBlocked: Boolean = false,
+    val isMuted: Boolean = false,
+    /** Peer id to use for favorite/block/verify actions; defaults to [id]. */
+    val peerID: String = id,
+    /** Conversation id for message/mute actions, when this contact has one. */
+    val conversationID: String? = null
 )
 
 /**
@@ -34,7 +42,13 @@ fun dedupeLinkzContacts(contacts: List<LinkzContact>): List<LinkzContact> {
             byId[key] = existing.copy(
                 displayName = betterName,
                 isFavorite = existing.isFavorite || contact.isFavorite,
-                isConnected = existing.isConnected || contact.isConnected
+                isConnected = existing.isConnected || contact.isConnected,
+                fingerprint = existing.fingerprint ?: contact.fingerprint,
+                isVerified = existing.isVerified || contact.isVerified,
+                isBlocked = existing.isBlocked || contact.isBlocked,
+                isMuted = existing.isMuted || contact.isMuted,
+                peerID = contact.peerID.takeIf { it != contact.id } ?: existing.peerID,
+                conversationID = existing.conversationID ?: contact.conversationID
             )
         }
     }

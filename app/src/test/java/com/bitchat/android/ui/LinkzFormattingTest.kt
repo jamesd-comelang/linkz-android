@@ -53,6 +53,29 @@ class LinkzFormattingTest {
     }
 
     @Test
+    fun contactsDedupeMergesContactFlags() {
+        val contacts = listOf(
+            LinkzContact(id = "peer-a", displayName = "Amy", fingerprint = "fp-a"),
+            LinkzContact(
+                id = "PEER-A",
+                displayName = "Amy",
+                isVerified = true,
+                isBlocked = true,
+                isMuted = true,
+                peerID = "peer-a",
+                conversationID = "peer-a"
+            )
+        )
+        val result = dedupeLinkzContacts(contacts)
+        assertEquals(1, result.size)
+        assertEquals("fp-a", result[0].fingerprint)
+        assertEquals(true, result[0].isVerified)
+        assertEquals(true, result[0].isBlocked)
+        assertEquals(true, result[0].isMuted)
+        assertEquals("peer-a", result[0].conversationID)
+    }
+
+    @Test
     fun shortFingerprintTakesTwelveChars() {
         assertEquals("abcdef123456", shortFingerprint("abcdef1234567890"))
         assertEquals("", shortFingerprint(""))

@@ -391,48 +391,105 @@ private fun LinkzContactsTab(
     conversations: List<com.bitchat.android.ui.ConversationSummary>
 ) {
     var query by remember { mutableStateOf("") }
-    val fromPeers = connectedPeers.map { peerID ->
-        val fingerprint = peerFingerprints[peerID]
-        LinkzContact(
-            id = peerID,
-            displayName = peerNicknames[peerID] ?: peerID.take(12),
-            isFavorite = fingerprint != null && favoritePeers.contains(fingerprint),
-            isConnected = true
-        )
-    }
-    val fromConversations = conversations.map { summary ->
-        val fingerprint = summary.connectedPeerID?.let { peerFingerprints[it] }
-            ?: peerFingerprints[summary.conversationID]
-        LinkzContact(
-            id = summary.conversationID,
-            displayName = summary.displayName,
-            isFavorite = fingerprint != null && favoritePeers.contains(fingerprint) ||
-                favoritePeers.contains(summary.conversationID),
-            isConnected = summary.isConnected
-        )
-    }
-    val contacts = dedupeLinkzContacts(fromPeers + fromConversations)
-        .filter {
-            query.isBlank() || it.displayName.contains(query, ignoreCase = true)
+    var showSearch by remember { mutableStateOf(false) }
+    var showAddMenu by remember { mutableStateOf(false) }
+    var selectedContactId by remember { mutableStateOf<String?>(null) }
+    // Block state is not a StateFlow, so bump this after a block/unblock
+    // to recompute the list below.
+    var blockTick by remember { mutableStateOf(0) }
+    val verifiedFingerprints by viewModel.verifiedFingerprints.collectAsStateWithLifecycle()
+    val baseContacts = remember(
+        connectedPeers, peerNicknames, favoritePeers, peerFingerprints,
+        conversations, verifiedFingerprints, blockTick
+    ) {
+        val fromPeers = connectedPeers.map { peerID ->
+            val fingerprint = peerFingerprints[peerID]
+            LinkzContact(
+                id = peerID,
+                displayName = peerNicknames[peerID] ?: peerID.take(12),
+                isFavorite = fingerprint != null && favoritePeers.contains(fingerprint),
+                isConnected = true,
+                fingerprint = fingerprint,
+                isVerified = fingerprint != null && verifiedFingerprints.contains(fingerprint),
+                isBlocked = viewModel.isPeerBlocked(peerID)
+            )
         }
+        val fromConversations = conversations.map { summary ->
+            val peerID = summary.connectedPeerID ?: summary.conversationID
+            val fingerprint = summary.connectedPeerID?.let { peerFingerprints[it] }
+                ?: peerFingerprints[summary.conversationID]
+            LinkzContact(
+                id = summary.conversationID,
+                displayName = summary.displayName,
+                isFavorite = fingerprint != null && favoritePeers.contains(fingerprint) ||
+                    favoritePeers.contains(summary.conversationID),
+                isConnected = summary.isConnected,
+                fingerprint = fingerprint,
+                isVerified = fingerprint != null && verifiedFingerprints.contains(fingerprint),
+                isBlocked = viewModel.isPeerBlocked(peerID),
+                isMuted = summary.isMuted,
+                peerID = peerID,
+                conversationID = summary.conversationID
+            )
+        }
+        dedupeLinkzContacts(fromPeers + fromConversations)
+    }
+    val contacts = baseContacts.filter {
+        query.isBlank() || it.displayName.contains(query, ignoreCase = true)
+    }
+    val favorites = contacts.filter { it.isFavorite && !it.isBlocked }
+    val others = contacts.filter { !it.isFavorite && !it.isBlocked }
+    val blocked = contacts.filter { it.isBlocked }
     Column(modifier = Modifier.fillMaxSize()) {
-        LinkzTopBar(title = "Contacts", subtitle = "${contacts.size} contacts")
-        LinkzSearchField(query = query, onQueryChange = { query = it })
-        LazyColumn(modifier = Modifier.fillMaxSize()) {
-            items(contacts, key = { it.id.lowercase() }) { contact ->
-                val preview = when {
-                    contact.isFavorite -> "★ Favorite"
-                    contact.isConnected -> "Nearby"
-                    else -> "Past chat"
+        LinkzTopBar(
+            title = "Contacts",
+            subtitle = "${contacts.size} contacts",
+            onSearchClick = {
+                showSearch = !showSearch
+                if (!showSearch) query = ""
+            },
+            onAddClick = { showAddMenu = true }
+        )
+        DropdownMenu(
+            expanded = showAddMenu,
+            onDismissRequest = { showAddMenu = false }
+        ) {
+            DropdownMenuItem(
+                text = { Text(text = "Scan QR") },
+                onClick = {
+                    showAddMenu = false
+                    viewModel.showVerificationSheet()
                 }
-                LinkzChatRow(
-                    name = contact.displayName,
-                    preview = preview,
-                    timeLabel = "",
-                    unreadCount = 0,
-                    avatarColor = linkzAvatarColor(contact.id),
-                    onClick = { viewModel.showPrivateChatSheet(contact.id) }
-                )
+            )
+            DropdownMenuItem(
+                text = { Text(text = "Nearby people") },
+                onClick = {
+                    showAddMenu = false
+                    viewModel.showMeshPeerList()
+                }
+            )
+        }
+        if (showSearch) {
+            LinkzSearchField(query = query, onQueryChange = { query = it })
+        }
+        LazyColumn(modifier = Modifier.fillMaxSize()) {
+            if (favorites.isNotEmpty()) {
+                item { LinkzSectionHeader(text = "Favorites") }
+                items(favorites, key = { it.id.lowercase() }) { contact ->
+                    LinkzContactRow(contact) { selectedContactId = contact.id }
+                }
+            }
+            if (others.isNotEmpty()) {
+                item { LinkzSectionHeader(text = "Contacts") }
+                items(others, key = { it.id.lowercase() }) { contact ->
+                    LinkzContactRow(contact) { selectedContactId = contact.id }
+                }
+            }
+            if (blocked.isNotEmpty()) {
+                item { LinkzSectionHeader(text = "Blocked") }
+                items(blocked, key = { it.id.lowercase() }) { contact ->
+                    LinkzContactRow(contact) { selectedContactId = contact.id }
+                }
             }
             if (contacts.isEmpty()) {
                 item {
@@ -447,6 +504,58 @@ private fun LinkzContactsTab(
             }
         }
     }
+    // Re-derive the sheet's contact from the list so toggles (favorite,
+    // mute, block) update the sheet instead of showing stale state.
+    val selectedContact = selectedContactId?.let { id ->
+        baseContacts.firstOrNull { it.id == id }
+    }
+    if (selectedContact != null) {
+        LinkzContactSheet(
+            contact = selectedContact,
+            onDismiss = { selectedContactId = null },
+            onSendMessage = {
+                selectedContactId = null
+                viewModel.showPrivateChatSheet(
+                    selectedContact.conversationID ?: selectedContact.id
+                )
+            },
+            onVerify = {
+                selectedContactId = null
+                viewModel.showVerificationSheet()
+            },
+            onToggleFavorite = { viewModel.toggleFavorite(selectedContact.peerID) },
+            onToggleMute = selectedContact.conversationID?.let { conversationID ->
+                { viewModel.toggleConversationMuted(conversationID) }
+            },
+            onToggleBlock = {
+                if (selectedContact.isBlocked) {
+                    viewModel.unblockPeer(selectedContact.peerID)
+                } else {
+                    viewModel.blockPeer(selectedContact.peerID)
+                }
+                blockTick++
+            }
+        )
+    }
+}
+
+@Composable
+private fun LinkzContactRow(contact: LinkzContact, onClick: () -> Unit) {
+    val preview = when {
+        contact.isBlocked -> "Blocked"
+        contact.isFavorite -> "★ Favorite"
+        contact.isConnected -> "Nearby"
+        else -> "Past chat"
+    }
+    LinkzChatRow(
+        name = contact.displayName,
+        preview = preview,
+        timeLabel = "",
+        unreadCount = 0,
+        avatarColor = linkzAvatarColor(contact.id),
+        isMuted = contact.isMuted,
+        onClick = onClick
+    )
 }
 
 @Composable
