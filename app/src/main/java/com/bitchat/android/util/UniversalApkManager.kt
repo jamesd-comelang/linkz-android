@@ -43,7 +43,7 @@ class UniversalApkManager(
         private const val CACHE_DIR_NAME = "universal_apk"
         private const val METADATA_FILE_NAME = "universal_apk_info.json"
         private const val PROGRESS_FILE_NAME = "download_progress.json"
-        private const val APK_FILE_PREFIX = "bitchat-universal-"
+        private const val APK_FILE_PREFIX = "linkz-universal-"
         private const val TEMP_FILE_NAME = "download_temp.apk"
         private const val ROUTE_READY_TIMEOUT_MILLIS = 60_000L
 
@@ -625,7 +625,7 @@ class UniversalApkManager(
         if (!verifyApkSignature(tempFile)) {
             clearPartialDownload()
             throw ApkDownloadException(
-                message = "APK from ${source.id} is not signed by a trusted BitChat release key.",
+                message = "APK from ${source.id} is not signed by a trusted LinkZ release key.",
                 reason = ApkDownloadFailureReason.UntrustedKey,
                 messageArgs = listOf(source.displayName),
                 retryable = false,

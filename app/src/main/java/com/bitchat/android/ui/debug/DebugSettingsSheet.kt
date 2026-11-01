@@ -162,7 +162,7 @@ private fun DistributionInfoSection(info: DistributionInfoProvider.DistributionI
                             val clipboard = context.getSystemService(ClipboardManager::class.java)
                             clipboard?.setPrimaryClip(
                                 ClipData.newPlainText(
-                                    "BitChat signing certificate SHA-256",
+                                    "LinkZ signing certificate SHA-256",
                                     info.certificateSha256
                                 )
                             )
