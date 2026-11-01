@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -19,7 +20,16 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.ChatBubbleOutline
+import androidx.compose.material.icons.outlined.Explore
+import androidx.compose.material.icons.outlined.NotificationsOff
+import androidx.compose.material.icons.outlined.PeopleOutline
+import androidx.compose.material.icons.outlined.PersonOutline
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -38,12 +48,15 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/** The four Linkz tabs, in WeChat order. */
-enum class LinkzTab(val label: String, val icon: ImageVector) {
-    CHATS("Chats", Icons.Filled.ChatBubble),
-    CONTACTS("Contacts", Icons.Filled.People),
-    DISCOVER("Discover", Icons.Filled.Explore),
-    ME("Me", Icons.Filled.Person)
+/**
+ * The four Linkz tabs, in WeChat order. Like WeChat, the selected tab
+ * uses a filled icon and the unselected tabs use outline icons.
+ */
+enum class LinkzTab(val label: String, val icon: ImageVector, val outlineIcon: ImageVector) {
+    CHATS("Chats", Icons.Filled.ChatBubble, Icons.Outlined.ChatBubbleOutline),
+    CONTACTS("Contacts", Icons.Filled.People, Icons.Outlined.PeopleOutline),
+    DISCOVER("Discover", Icons.Filled.Explore, Icons.Outlined.Explore),
+    ME("Me", Icons.Filled.Person, Icons.Outlined.PersonOutline)
 }
 
 /** Deterministic avatar colour from an id, so a peer keeps one colour. */
@@ -57,44 +70,79 @@ fun linkzAvatarColor(id: String): Color {
 }
 
 /**
- * WeChat-style top bar: light surface, centred title, optional subtitle
- * for status lines such as "3 nearby".
+ * WeChat-style top bar: light-grey bar (the theme background, #EDEDED in
+ * light mode), centred title, optional subtitle, and optional search /
+ * add actions at top right, as on WeChat's Chats screen. The title stays
+ * centred even when actions are present.
  */
 @Composable
 fun LinkzTopBar(
     title: String,
     subtitle: String? = null,
+    onSearchClick: (() -> Unit)? = null,
+    onAddClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     Surface(
         modifier = modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.surface,
+        color = MaterialTheme.colorScheme.background,
         tonalElevation = 0.dp
     ) {
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+                .padding(vertical = 10.dp)
         ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 17.sp
-                ),
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            if (subtitle != null) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.Center),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
                 Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 17.sp
+                    ),
+                    color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                if (subtitle != null) {
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            Row(
+                modifier = Modifier.align(Alignment.CenterEnd),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (onSearchClick != null) {
+                    IconButton(onClick = onSearchClick, modifier = Modifier.size(40.dp)) {
+                        Icon(
+                            imageVector = Icons.Outlined.Search,
+                            contentDescription = "Search",
+                            modifier = Modifier.size(24.dp),
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+                if (onAddClick != null) {
+                    IconButton(onClick = onAddClick, modifier = Modifier.size(40.dp)) {
+                        Icon(
+                            imageVector = Icons.Outlined.Add,
+                            contentDescription = "Add",
+                            modifier = Modifier.size(24.dp),
+                            tint = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
             }
         }
     }
@@ -121,7 +169,7 @@ fun LinkzBottomNav(
                 icon = {
                     Box(contentAlignment = Alignment.TopEnd) {
                         Icon(
-                            imageVector = tab.icon,
+                            imageVector = if (selected == tab) tab.icon else tab.outlineIcon,
                             contentDescription = tab.label,
                             modifier = Modifier.size(24.dp)
                         )
@@ -179,7 +227,7 @@ fun LinkzAvatar(
     Box(
         modifier = modifier
             .size(size)
-            .clip(RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(6.dp))
             .background(color.copy(alpha = 0.16f)),
         contentAlignment = Alignment.Center
     ) {
@@ -194,7 +242,13 @@ fun LinkzAvatar(
     }
 }
 
-/** One row of the Chats list: avatar, name, preview, time, unread badge. */
+/**
+ * One row of the Chats list, WeChat-style: square-ish avatar, name,
+ * preview, time at top right, and a hairline divider that starts after
+ * the avatar, as on WeChat. Unread shows as a red count badge on the
+ * avatar itself (a grey dot when the chat is muted); a muted chat shows
+ * a bell-off icon under its time instead of a red badge.
+ */
 @Composable
 fun LinkzChatRow(
     name: String,
@@ -204,55 +258,89 @@ fun LinkzChatRow(
     avatarColor: Color,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    subtitle: String? = null
+    subtitle: String? = null,
+    isMuted: Boolean = false
 ) {
     Surface(
         modifier = modifier.fillMaxWidth(),
         color = MaterialTheme.colorScheme.surface,
         onClick = onClick
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            LinkzAvatar(name = name, color = avatarColor)
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = name,
-                    style = MaterialTheme.typography.bodyLarge.copy(
-                        fontWeight = FontWeight.Normal,
-                        fontSize = 16.sp
-                    ),
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = subtitle ?: preview,
-                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            Spacer(modifier = Modifier.width(8.dp))
-            Column(horizontalAlignment = Alignment.End) {
-                Text(
-                    text = timeLabel,
-                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                if (unreadCount > 0) {
-                    LinkzUnreadBadge(count = unreadCount)
-                } else {
-                    Spacer(modifier = Modifier.height(18.dp))
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box {
+                    LinkzAvatar(name = name, color = avatarColor)
+                    if (unreadCount > 0 && !isMuted) {
+                        LinkzUnreadBadge(
+                            count = unreadCount,
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .offset(x = 6.dp, y = (-6).dp)
+                        )
+                    } else if (unreadCount > 0) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .offset(x = 4.dp, y = (-4).dp)
+                                .size(10.dp)
+                                .background(
+                                    MaterialTheme.colorScheme.onSurfaceVariant,
+                                    CircleShape
+                                )
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = name,
+                        style = MaterialTheme.typography.bodyLarge.copy(
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 17.sp
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = subtitle ?: preview,
+                        style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        text = timeLabel,
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    if (isMuted) {
+                        Icon(
+                            imageVector = Icons.Outlined.NotificationsOff,
+                            contentDescription = "Muted",
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
                 }
             }
+            HorizontalDivider(
+                modifier = Modifier.padding(start = 76.dp),
+                thickness = 0.5.dp,
+                color = MaterialTheme.colorScheme.outlineVariant
+            )
         }
     }
 }

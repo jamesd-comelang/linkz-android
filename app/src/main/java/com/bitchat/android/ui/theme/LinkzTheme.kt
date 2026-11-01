@@ -18,6 +18,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 
 /**
  * Linkz design tokens, WeChat-style.
@@ -112,6 +116,78 @@ fun linkzBubbleStyle(isSelf: Boolean, colorScheme: ColorScheme): LinkzBubbleStyl
 }
 
 /**
+ * Sans-serif type for Linkz surfaces, matching the WeChat look. The shared
+ * app [Typography] is the bundled Geist Mono family, which is what made
+ * the Linkz shell read like a terminal; Linkz deliberately does not use
+ * it, so the shell, list rows, and (since [LinkzTheme] wraps the whole
+ * app) the chat transcript all render in the system sans-serif instead.
+ * Sizes, weights, and line heights mirror [Typography] so nothing else
+ * about the layout changes with the font.
+ */
+val LinkzTypography = androidx.compose.material3.Typography(
+    bodyLarge = TextStyle(
+        fontFamily = FontFamily.Default,
+        fontWeight = FontWeight.Normal,
+        fontSize = (BASE_FONT_SIZE + 1).sp,
+        lineHeight = (BASE_FONT_SIZE + 7).sp
+    ),
+    bodyMedium = TextStyle(
+        fontFamily = FontFamily.Default,
+        fontWeight = FontWeight.Normal,
+        fontSize = BASE_FONT_SIZE.sp,
+        lineHeight = (BASE_FONT_SIZE + 6).sp
+    ),
+    bodySmall = TextStyle(
+        fontFamily = FontFamily.Default,
+        fontWeight = FontWeight.Normal,
+        fontSize = (BASE_FONT_SIZE - 3).sp,
+        lineHeight = (BASE_FONT_SIZE + 1).sp
+    ),
+    headlineSmall = TextStyle(
+        fontFamily = FontFamily.Default,
+        fontWeight = FontWeight.Medium,
+        fontSize = (BASE_FONT_SIZE + 3).sp,
+        lineHeight = (BASE_FONT_SIZE + 9).sp
+    ),
+    headlineLarge = TextStyle(
+        fontFamily = FontFamily.Default,
+        fontWeight = FontWeight.Bold,
+        fontSize = (BASE_FONT_SIZE + 13).sp,
+        lineHeight = (BASE_FONT_SIZE + 21).sp
+    ),
+    titleLarge = TextStyle(
+        fontFamily = FontFamily.Default,
+        fontWeight = FontWeight.Medium,
+        fontSize = (BASE_FONT_SIZE + 5).sp,
+        lineHeight = (BASE_FONT_SIZE + 13).sp
+    ),
+    titleMedium = TextStyle(
+        fontFamily = FontFamily.Default,
+        fontWeight = FontWeight.Medium,
+        fontSize = (BASE_FONT_SIZE + 1).sp,
+        lineHeight = (BASE_FONT_SIZE + 7).sp
+    ),
+    labelLarge = TextStyle(
+        fontFamily = FontFamily.Default,
+        fontWeight = FontWeight.Medium,
+        fontSize = (BASE_FONT_SIZE - 1).sp,
+        lineHeight = (BASE_FONT_SIZE + 5).sp
+    ),
+    labelMedium = TextStyle(
+        fontFamily = FontFamily.Default,
+        fontWeight = FontWeight.Medium,
+        fontSize = (BASE_FONT_SIZE - 2).sp,
+        lineHeight = (BASE_FONT_SIZE + 3).sp
+    ),
+    labelSmall = TextStyle(
+        fontFamily = FontFamily.Default,
+        fontWeight = FontWeight.Normal,
+        fontSize = (BASE_FONT_SIZE - 4).sp,
+        lineHeight = (BASE_FONT_SIZE + 1).sp
+    )
+)
+
+/**
  * The Linkz app theme. Same structure as [BitchatTheme] (system / light /
  * dark preference from [ThemePreferenceManager], status-bar handling, and
  * the shared [LocalBitchatPalette] for app-specific tokens), with the
@@ -160,7 +236,7 @@ fun LinkzTheme(
     CompositionLocalProvider(LocalBitchatPalette provides palette) {
         MaterialTheme(
             colorScheme = colorScheme,
-            typography = Typography,
+            typography = LinkzTypography,
             content = content
         )
     }

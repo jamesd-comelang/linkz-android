@@ -10,13 +10,18 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -121,8 +126,6 @@ fun LinkzShell(viewModel: ChatViewModel) {
                     viewModel = viewModel,
                     conversations = conversations,
                     joinedChannels = joinedChannels,
-                    isConnected = isConnected,
-                    nearbyCount = connectedPeers.size,
                     onOpenMeshTimeline = { showMeshTimeline = true }
                 )
                 LinkzTab.CONTACTS -> LinkzContactsTab(
@@ -253,6 +256,13 @@ private fun LinkzSearchField(
         onValueChange = onQueryChange,
         placeholder = { Text(text = "Search") },
         singleLine = true,
+        shape = RoundedCornerShape(10.dp),
+        colors = TextFieldDefaults.colors(
+            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+            focusedIndicatorColor = Color.Transparent,
+            unfocusedIndicatorColor = Color.Transparent
+        ),
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 8.dp)
@@ -264,26 +274,50 @@ private fun LinkzChatsTab(
     viewModel: ChatViewModel,
     conversations: List<com.bitchat.android.ui.ConversationSummary>,
     joinedChannels: Set<String>,
-    isConnected: Boolean,
-    nearbyCount: Int,
     onOpenMeshTimeline: () -> Unit
 ) {
     var query by remember { mutableStateOf("") }
+    var showSearch by remember { mutableStateOf(false) }
+    var showAddMenu by remember { mutableStateOf(false) }
     val filtered = conversations.filter {
         query.isBlank() ||
             it.displayName.contains(query, ignoreCase = true) ||
             it.latestMessagePreview.contains(query, ignoreCase = true)
     }
     Column(modifier = Modifier.fillMaxSize()) {
+        // WeChat-style header: plain title, no mesh-status subtitle (mesh
+        // status still shows on Discover and Me). Search lives behind the
+        // top-bar icon instead of a permanent field in the list.
         LinkzTopBar(
             title = "Linkz",
-            subtitle = if (isConnected) {
-                "Mesh connected · $nearbyCount nearby"
-            } else {
-                "Mesh offline"
-            }
+            onSearchClick = {
+                showSearch = !showSearch
+                if (!showSearch) query = ""
+            },
+            onAddClick = { showAddMenu = true }
         )
-        LinkzSearchField(query = query, onQueryChange = { query = it })
+        DropdownMenu(
+            expanded = showAddMenu,
+            onDismissRequest = { showAddMenu = false }
+        ) {
+            DropdownMenuItem(
+                text = { Text(text = "Scan QR") },
+                onClick = {
+                    showAddMenu = false
+                    viewModel.showVerificationSheet()
+                }
+            )
+            DropdownMenuItem(
+                text = { Text(text = "Nearby people") },
+                onClick = {
+                    showAddMenu = false
+                    viewModel.showMeshPeerList()
+                }
+            )
+        }
+        if (showSearch) {
+            LinkzSearchField(query = query, onQueryChange = { query = it })
+        }
         LazyColumn(modifier = Modifier.fillMaxSize()) {
             item {
                 LinkzChatRow(
@@ -294,7 +328,6 @@ private fun LinkzChatsTab(
                     avatarColor = linkzAvatarColor("#mesh"),
                     onClick = onOpenMeshTimeline
                 )
-                Spacer(modifier = Modifier.height(8.dp))
             }
             items(joinedChannels.sorted(), key = { "channel:$it" }) { channel ->
                 LinkzChatRow(
@@ -305,9 +338,6 @@ private fun LinkzChatsTab(
                     avatarColor = linkzAvatarColor(channel),
                     onClick = { viewModel.switchToChannel(channel) }
                 )
-            }
-            if (joinedChannels.isNotEmpty()) {
-                item { Spacer(modifier = Modifier.height(8.dp)) }
             }
             items(filtered, key = { it.conversationID }) { summary ->
                 val preview = summary.draft
@@ -320,16 +350,22 @@ private fun LinkzChatsTab(
                     timeLabel = formatChatTime(summary.latestMessageAt),
                     unreadCount = summary.unreadCount,
                     avatarColor = linkzAvatarColor(summary.conversationID),
+                    isMuted = summary.isMuted,
                     onClick = { viewModel.showPrivateChatSheet(summary.conversationID) }
                 )
             }
             if (filtered.isEmpty() && joinedChannels.isEmpty()) {
                 item {
-                    Column(modifier = Modifier.padding(16.dp)) {
+                    Column(
+                        modifier = Modifier.padding(
+                            horizontal = 16.dp,
+                            vertical = 24.dp
+                        )
+                    ) {
                         Text(
                             text = "No chats yet",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurface
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
