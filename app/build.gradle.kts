@@ -59,6 +59,22 @@ android {
         includeInBundle = false
     }
 
+    signingConfigs {
+        // CI decodes a stable debug keystore (repo secret, never committed)
+        // and points DEBUG_KEYSTORE_PATH at it, so every CI debug build
+        // shares one signer and installs over earlier CI builds. Local
+        // builds without the variable keep Gradle's default debug key.
+        getByName("debug") {
+            val ciKeystore = System.getenv("DEBUG_KEYSTORE_PATH")
+            if (!ciKeystore.isNullOrBlank()) {
+                storeFile = file(ciKeystore)
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
+        }
+    }
+
     buildTypes {
         debug {
             ndk {
