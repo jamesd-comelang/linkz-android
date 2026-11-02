@@ -9,7 +9,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.bitchat.android.ui.theme.BitchatFontFamily
 import com.bitchat.android.ui.theme.BASE_FONT_SIZE
 import com.bitchat.android.ui.theme.LocalBitchatPalette
 import androidx.compose.ui.res.stringResource
@@ -59,7 +58,6 @@ fun ChatUserSheet(
                 Text(
                     text = stringResource(R.string.at_nickname, targetNickname),
                     fontSize = 18.sp,
-                    fontFamily = BitchatFontFamily,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
@@ -67,11 +65,10 @@ fun ChatUserSheet(
                 Text(
                     text = if (selectedMessage != null) stringResource(R.string.choose_action_message_or_user) else stringResource(R.string.choose_action_user),
                     fontSize = 12.sp,
-                    fontFamily = BitchatFontFamily,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                 )
                 
-                // Action list (iOS-style plain list)
+                // Action list (WeChat-style plain list)
                 LazyColumn(
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -171,7 +168,7 @@ fun ChatUserSheet(
                     }
                 }
                 
-                // Cancel button (iOS-style)
+                // Cancel button
                 Button(
                     onClick = onDismiss,
                     colors = ButtonDefaults.buttonColors(
@@ -183,7 +180,6 @@ fun ChatUserSheet(
                     Text(
                         text = stringResource(R.string.cancel_lower),
                         fontSize = BASE_FONT_SIZE.sp,
-                        fontFamily = BitchatFontFamily
                     )
                 }
             }
@@ -198,7 +194,7 @@ private fun UserActionRow(
     titleColor: Color,
     onClick: () -> Unit
 ) {
-    // iOS-style list row (plain button, no card background)
+    // WeChat-style list row (plain button, no card background)
     Surface(
         onClick = onClick,
         color = Color.Transparent,
@@ -214,7 +210,6 @@ private fun UserActionRow(
             Text(
                 text = title,
                 fontSize = BASE_FONT_SIZE.sp,
-                fontFamily = BitchatFontFamily,
                 fontWeight = FontWeight.Medium,
                 color = titleColor
             )
@@ -222,8 +217,11 @@ private fun UserActionRow(
             Text(
                 text = subtitle,
                 fontSize = 12.sp,
-                fontFamily = BitchatFontFamily,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+            )
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.outlineVariant,
+                thickness = 0.5.dp
             )
         }
     }
