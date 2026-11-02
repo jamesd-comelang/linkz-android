@@ -1,6 +1,7 @@
 package com.bitchat.android.ui.linkz
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -628,6 +629,7 @@ private fun LinkzMeTab(
     } catch (_: Exception) {
         ""
     }
+    var showNicknameSheet by remember { mutableStateOf(false) }
     Column(modifier = Modifier.fillMaxSize()) {
         LinkzTopBar(title = "Me")
         Surface(
@@ -637,6 +639,7 @@ private fun LinkzMeTab(
             androidx.compose.foundation.layout.Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .clickable { showNicknameSheet = true }
                     .padding(16.dp),
                 verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
             ) {
@@ -691,6 +694,16 @@ private fun LinkzMeTab(
             title = "Clear all data",
             subtitle = "Erases all messages and keys on this device",
             onClick = onShowPanicDialog
+        )
+    }
+    if (showNicknameSheet) {
+        LinkzNicknameSheet(
+            currentNickname = nickname,
+            onDismiss = { showNicknameSheet = false },
+            onSave = { newNickname ->
+                viewModel.setNickname(newNickname)
+                showNicknameSheet = false
+            }
         )
     }
 }
