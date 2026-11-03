@@ -46,6 +46,44 @@ class DataManager(private val context: Context) {
     fun saveNickname(nickname: String) {
         prefs.edit().putString("nickname", nickname).apply()
     }
+
+    // MARK: - Profile Setup (WeChat-style nickname + photo at first run)
+
+    /** True once the user has finished or skipped the one-time profile setup. */
+    fun isProfileSetupDone(): Boolean {
+        return prefs.getBoolean("profile_setup_done", false)
+    }
+
+    fun setProfileSetupDone() {
+        prefs.edit().putBoolean("profile_setup_done", true).apply()
+    }
+
+    /**
+     * Own profile photo, local only. The mesh carries nickname + fingerprint
+     * but no photo, so other peers always see the initial-based avatar.
+     */
+    fun saveAvatarBitmap(bitmap: android.graphics.Bitmap): Boolean {
+        return try {
+            context.openFileOutput("avatar.jpg", Context.MODE_PRIVATE).use { out ->
+                bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, out)
+            }
+            prefs.edit().putString("avatar_path", "avatar.jpg").apply()
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    fun loadAvatarBitmap(): android.graphics.Bitmap? {
+        val name = prefs.getString("avatar_path", null) ?: return null
+        return try {
+            context.openFileInput(name).use { input ->
+                android.graphics.BitmapFactory.decodeStream(input)
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
     
     // MARK: - Geohash Channel Persistence
     

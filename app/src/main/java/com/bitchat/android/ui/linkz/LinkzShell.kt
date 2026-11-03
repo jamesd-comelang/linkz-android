@@ -1,6 +1,7 @@
 package com.bitchat.android.ui.linkz
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -8,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -22,7 +24,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -643,11 +647,23 @@ private fun LinkzMeTab(
                     .padding(16.dp),
                 verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
             ) {
-                LinkzAvatar(
-                    name = displayName,
-                    color = linkzAvatarColor(displayName),
-                    size = 64.dp
-                )
+                val ownAvatar = remember { viewModel.loadAvatarBitmap() }
+                if (ownAvatar != null) {
+                    Image(
+                        bitmap = ownAvatar,
+                        contentDescription = "Your photo",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(64.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                    )
+                } else {
+                    LinkzAvatar(
+                        name = displayName,
+                        color = linkzAvatarColor(displayName),
+                        size = 64.dp
+                    )
+                }
                 Spacer(modifier = Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(

@@ -2,6 +2,7 @@ package com.bitchat.android.ui
 
 import android.app.Application
 import android.util.Log
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -661,6 +662,14 @@ class ChatViewModel(
     
     // MARK: - Nickname Management
     
+    /**
+     * Own profile photo chosen during onboarding setup, if any.
+     * Local only: the mesh carries nickname + fingerprint, never a photo.
+     */
+    fun loadAvatarBitmap(): androidx.compose.ui.graphics.ImageBitmap? {
+        return dataManager.loadAvatarBitmap()?.asImageBitmap()
+    }
+
     fun setNickname(newNickname: String) {
         state.setNickname(newNickname)
         dataManager.saveNickname(newNickname)

@@ -576,6 +576,7 @@
   <string name="privacy_protected">Your Privacy is Protected</string>
   <string name="privacy_bullets">• No tracking or data collection\n• Bluetooth mesh chats are fully offline\n• Geohash chats use the internet</string>
   <string name="permissions_header">Permissions</string>
+  <string name="permissions_intro">LinkZ talks directly to nearby phones over Bluetooth. No accounts, no servers.</string>
   <string name="grant_permissions">Grant Permissions</string>
   <string name="location_tracking_warning">LinkZ does NOT track your location</string>
   <string name="at_symbol">@</string>

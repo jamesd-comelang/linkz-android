@@ -6,12 +6,10 @@ import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Power
 import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -80,55 +78,14 @@ fun PermissionExplanationScreen(
                 )
             }
 
-            // Privacy assurance section - matching AboutSheet card style
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                color = colorScheme.surfaceVariant.copy(alpha = 0.25f),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.Top,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Security,
-                            contentDescription = stringResource(R.string.cd_privacy_protected),
-                            tint = colorScheme.primary,
-                            modifier = Modifier
-                                .padding(top = 2.dp)
-                                .size(20.dp)
-                        )
-                        Column {
-                            Text(
-                                text = stringResource(R.string.privacy_protected),
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Medium,
-                                color = colorScheme.onBackground
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = stringResource(R.string.privacy_bullets),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = colorScheme.onBackground.copy(alpha = 0.8f)
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Section header
+            // One short line, WeChat-style: why these permissions exist.
             Text(
-                text = stringResource(R.string.permissions_header),
-                style = MaterialTheme.typography.labelLarge,
-                color = colorScheme.onBackground.copy(alpha = 0.7f),
-                modifier = Modifier.padding(top = 8.dp, bottom = 8.dp)
+                text = stringResource(R.string.permissions_intro),
+                style = MaterialTheme.typography.bodyMedium,
+                color = colorScheme.onBackground.copy(alpha = 0.8f)
             )
 
-            // Permission categories
+            // Permission categories: one short reason each.
             permissionCategories.forEach { category ->
                 PermissionCategoryCard(
                     category = category,

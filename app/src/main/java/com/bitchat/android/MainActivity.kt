@@ -1,12 +1,15 @@
 package com.bitchat.android
 
 import android.content.Intent
+import android.graphics.BitmapFactory
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -14,6 +17,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.ViewModelProvider
@@ -40,6 +46,8 @@ import com.bitchat.android.onboarding.OnboardingState
 import com.bitchat.android.onboarding.PermissionExplanationScreen
 import com.bitchat.android.onboarding.PermissionManager
 import com.bitchat.android.ui.ChatViewModel
+import com.bitchat.android.ui.DataManager
+import com.bitchat.android.ui.linkz.LinkzProfileSetupScreen
 import com.bitchat.android.ui.linkz.LinkzShell
 import com.bitchat.android.ui.OrientationAwareActivity
 import com.bitchat.android.ui.theme.LinkzTheme
@@ -62,6 +70,37 @@ class MainActivity : OrientationAwareActivity() {
     private lateinit var unifiedMeshService: MeshService
     private val mainViewModel: MainViewModel by viewModels()
     private var pendingMeshForegroundServiceStart = false
+
+    // One-time WeChat-style profile setup: nickname + optional photo,
+    // shown after the mesh is running and before the shell opens.
+    private val profileDataManager by lazy { DataManager(this) }
+    private var pickedAvatarBitmap by mutableStateOf<ImageBitmap?>(null)
+    private val pickAvatarLauncher = registerForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        pickedAvatarBitmap = uri?.let { decodeAvatarBitmap(it) }
+    }
+
+    /** Decodes a picked photo, downscaled so its longest side is at most 512px. */
+    private fun decodeAvatarBitmap(uri: Uri): ImageBitmap? {
+        return try {
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            contentResolver.openInputStream(uri)?.use { input ->
+                BitmapFactory.decodeStream(input, null, bounds)
+            }
+            var sample = 1
+            while (bounds.outWidth / sample > 512 || bounds.outHeight / sample > 512) {
+                sample *= 2
+            }
+            val options = BitmapFactory.Options().apply { inSampleSize = sample }
+            val bitmap = contentResolver.openInputStream(uri)?.use { input ->
+                BitmapFactory.decodeStream(input, null, options)
+            }
+            bitmap?.asImageBitmap()
+        } catch (_: Exception) {
+            null
+        }
+    }
     private val chatViewModel: ChatViewModel by viewModels { 
         object : ViewModelProvider.Factory {
             override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
@@ -308,6 +347,30 @@ class MainActivity : OrientationAwareActivity() {
                     },
                     onSkip = {
                         onboardingCoordinator.skipBackgroundLocation()
+                    }
+                )
+            }
+
+            OnboardingState.PROFILE_SETUP -> {
+                val nickname by chatViewModel.nickname.collectAsState()
+                LinkzProfileSetupScreen(
+                    modifier = modifier,
+                    currentNickname = nickname,
+                    avatarBitmap = pickedAvatarBitmap,
+                    onPickAvatar = { pickAvatarLauncher.launch("image/*") },
+                    onDone = { name ->
+                        chatViewModel.setNickname(name)
+                        pickedAvatarBitmap?.let { bitmap ->
+                            profileDataManager.saveAvatarBitmap(bitmap.asAndroidBitmap())
+                        }
+                        pickedAvatarBitmap = null
+                        profileDataManager.setProfileSetupDone()
+                        mainViewModel.updateOnboardingState(OnboardingState.COMPLETE)
+                    },
+                    onSkip = {
+                        pickedAvatarBitmap = null
+                        profileDataManager.setProfileSetupDone()
+                        mainViewModel.updateOnboardingState(OnboardingState.COMPLETE)
                     }
                 )
             }
@@ -713,7 +776,13 @@ class MainActivity : OrientationAwareActivity() {
                 // Small delay to ensure mesh service is fully initialized
                 delay(500)
                 Log.i("MainActivity", "App initialization complete")
-                mainViewModel.updateOnboardingState(OnboardingState.COMPLETE)
+                if (profileDataManager.isProfileSetupDone()) {
+                    mainViewModel.updateOnboardingState(OnboardingState.COMPLETE)
+                } else {
+                    // First run (or first run after this feature landed):
+                    // WeChat-style profile setup before the shell opens.
+                    mainViewModel.updateOnboardingState(OnboardingState.PROFILE_SETUP)
+                }
             } catch (e: Exception) {
                 Log.e("MainActivity", "Failed to initialize app", e)
                 handleOnboardingFailed("Failed to initialize the app: ${e.message}")
