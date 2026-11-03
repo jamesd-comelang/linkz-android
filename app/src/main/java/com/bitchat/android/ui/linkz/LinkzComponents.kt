@@ -42,6 +42,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -124,7 +128,7 @@ fun LinkzTopBar(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 if (onSearchClick != null) {
-                    IconButton(onClick = onSearchClick, modifier = Modifier.size(40.dp)) {
+                    IconButton(onClick = onSearchClick, modifier = Modifier.size(48.dp)) {
                         Icon(
                             imageVector = Icons.Outlined.Search,
                             contentDescription = "Search",
@@ -134,7 +138,7 @@ fun LinkzTopBar(
                     }
                 }
                 if (onAddClick != null) {
-                    IconButton(onClick = onAddClick, modifier = Modifier.size(40.dp)) {
+                    IconButton(onClick = onAddClick, modifier = Modifier.size(48.dp)) {
                         Icon(
                             imageVector = Icons.Outlined.Add,
                             contentDescription = "Add",
@@ -194,14 +198,21 @@ fun LinkzBottomNav(
     }
 }
 
-/** Small red unread badge, WeChat-style. */
+/** Small red unread badge, WeChat-style. Announces its count to TalkBack. */
 @Composable
 fun LinkzUnreadBadge(count: Int, modifier: Modifier = Modifier) {
     if (count <= 0) return
     Box(
         modifier = modifier
             .size(18.dp)
-            .background(Color(0xFFFA5151), CircleShape),
+            .background(Color(0xFFFA5151), CircleShape)
+            .semantics {
+                contentDescription = if (count > 99) {
+                    "More than 99 unread messages"
+                } else {
+                    "$count unread messages"
+                }
+            },
         contentAlignment = Alignment.Center
     ) {
         Text(
@@ -415,7 +426,7 @@ fun LinkzActionRow(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .clickable(onClick = onClick, role = Role.Button)
             .padding(horizontal = 16.dp, vertical = 13.dp)
     ) {
         Text(
