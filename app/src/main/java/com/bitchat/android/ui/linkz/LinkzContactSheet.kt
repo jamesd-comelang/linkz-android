@@ -7,14 +7,22 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 
 /**
@@ -34,8 +42,11 @@ fun LinkzContactSheet(
     onVerify: () -> Unit,
     onToggleFavorite: () -> Unit,
     onToggleMute: (() -> Unit)?,
-    onToggleBlock: () -> Unit
+    onToggleBlock: () -> Unit,
+    remark: String? = null,
+    onSetRemark: ((String) -> Unit)? = null
 ) {
+    var remarkText by remember(remark) { mutableStateOf(remark ?: "") }
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
             modifier = Modifier
@@ -73,9 +84,44 @@ fun LinkzContactSheet(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                    if (contact.nickname != null) {
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Nickname ${contact.nickname}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            if (onSetRemark != null) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    TextField(
+                        value = remarkText,
+                        onValueChange = { remarkText = it },
+                        label = { Text(text = "Remark name") },
+                        placeholder = { Text(text = "Name only you see") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(
+                            onDone = { onSetRemark(remarkText) }
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text(
+                        text = "Only you see this name. It never leaves this phone.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            }
             if (!contact.isBlocked) {
                 LinkzMenuRow(
                     title = "Send message",
@@ -105,6 +151,13 @@ fun LinkzContactSheet(
                 subtitle = if (contact.isBlocked) null else "You will not receive messages from this peer",
                 onClick = onToggleBlock
             )
+            if (remark != null && onSetRemark != null) {
+                LinkzMenuRow(
+                    title = "Clear remark",
+                    subtitle = "Show their nickname again",
+                    onClick = { onSetRemark("") }
+                )
+            }
         }
     }
 }

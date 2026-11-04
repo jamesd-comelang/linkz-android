@@ -84,6 +84,38 @@ class DataManager(private val context: Context) {
             null
         }
     }
+
+    /**
+     * Decode a picked image, downscale it to at most 512px on a side,
+     * and save it as the own profile photo. Same downscale the
+     * onboarding profile setup uses, reused so the photo can be
+     * changed later from the Me tab.
+     */
+    fun saveAvatarFromUri(uri: android.net.Uri): Boolean {
+        return try {
+            val bounds = android.graphics.BitmapFactory.Options().apply {
+                inJustDecodeBounds = true
+            }
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                android.graphics.BitmapFactory.decodeStream(input, null, bounds)
+            }
+            var sample = 1
+            while (bounds.outWidth / sample > 512 ||
+                bounds.outHeight / sample > 512
+            ) {
+                sample *= 2
+            }
+            val options = android.graphics.BitmapFactory.Options().apply {
+                inSampleSize = sample
+            }
+            val bitmap = context.contentResolver.openInputStream(uri)?.use { input ->
+                android.graphics.BitmapFactory.decodeStream(input, null, options)
+            } ?: return false
+            saveAvatarBitmap(bitmap)
+        } catch (_: Exception) {
+            false
+        }
+    }
     
     // MARK: - Geohash Channel Persistence
     
@@ -223,6 +255,26 @@ class DataManager(private val context: Context) {
         val result = _favoritePeers.contains(fingerprint)
         Log.d(TAG, "isFavorite check: fingerprint=$fingerprint, result=$result")
         return result
+    }
+
+    // MARK: - Remark Names (local only, like WeChat remarks)
+
+    /**
+     * A remark is a name only this phone shows for a peer. It never
+     * leaves the device, so it needs no protocol change. Keyed by
+     * peer id, the same key the Contacts list uses for favorite and
+     * block actions.
+     */
+    fun getRemark(peerID: String): String? {
+        return prefs.getString("remark_$peerID", null)?.takeIf { it.isNotBlank() }
+    }
+
+    fun setRemark(peerID: String, remark: String) {
+        if (remark.isBlank()) {
+            prefs.edit().remove("remark_$peerID").apply()
+        } else {
+            prefs.edit().putString("remark_$peerID", remark).apply()
+        }
     }
     
     fun logAllFavorites() {

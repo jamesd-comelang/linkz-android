@@ -1135,6 +1135,22 @@ class ChatViewModel(
         logCurrentFavoriteState()
     }
 
+    // Linkz remark names: local-only display overrides, like WeChat
+    // remarks. The tick forces the shell to re-read remarks after an
+    // edit, since DataManager prefs are not a StateFlow.
+    private val _remarksTick = MutableStateFlow(0)
+    val remarksTick: StateFlow<Int> = _remarksTick.asStateFlow()
+
+    fun getRemark(peerID: String): String? = dataManager.getRemark(peerID)
+
+    fun setRemark(peerID: String, remark: String) {
+        dataManager.setRemark(peerID, remark)
+        _remarksTick.value += 1
+    }
+
+    fun setAvatarFromUri(uri: android.net.Uri): Boolean =
+        dataManager.saveAvatarFromUri(uri)
+
     // Thin wrappers so the Linkz Contacts tab can block and unblock peers
     // through the existing PrivateChatManager; no protocol change.
     fun blockPeer(peerID: String): Boolean {

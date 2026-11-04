@@ -1,9 +1,13 @@
 package com.bitchat.android.ui.linkz
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -17,13 +21,17 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.rememberSwipeToDismissBoxState
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -34,10 +42,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.launch
 import com.bitchat.android.geohash.ChannelID
 import com.bitchat.android.ui.AboutSheet
 import com.bitchat.android.ui.ChatScreen
@@ -83,6 +93,7 @@ fun LinkzShell(viewModel: ChatViewModel) {
     val peerFingerprints by viewModel.peerFingerprints.collectAsStateWithLifecycle()
     val joinedChannels by viewModel.joinedChannels.collectAsStateWithLifecycle()
     val unreadChannelMessages by viewModel.unreadChannelMessages.collectAsStateWithLifecycle()
+    val remarksTick by viewModel.remarksTick.collectAsStateWithLifecycle()
 
     var selectedTabIndex by remember { mutableStateOf(0) }
     val selectedTab = LinkzTab.entries[selectedTabIndex]
@@ -90,6 +101,7 @@ fun LinkzShell(viewModel: ChatViewModel) {
     var showDebugSheet by remember { mutableStateOf(false) }
     var showLocationChannelsSheet by remember { mutableStateOf(false) }
     var showPanicDialog by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
 
     val inTimeline = currentChannel != null ||
         selectedLocationChannel is ChannelID.Location ||
@@ -113,52 +125,71 @@ fun LinkzShell(viewModel: ChatViewModel) {
     val totalUnread = conversations.sumOf { it.unreadCount } +
         unreadChannelMessages.values.sum()
 
-    Scaffold(
-        modifier = Modifier.fillMaxSize(),
-        containerColor = MaterialTheme.colorScheme.background,
-        bottomBar = {
-            LinkzBottomNav(
-                selected = selectedTab,
-                onSelect = { selectedTabIndex = LinkzTab.entries.indexOf(it) },
-                totalUnread = totalUnread
-            )
-        }
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-        ) {
-            when (selectedTab) {
-                LinkzTab.CHATS -> LinkzChatsTab(
-                    viewModel = viewModel,
-                    conversations = conversations,
-                    joinedChannels = joinedChannels,
-                    onOpenMeshTimeline = { showMeshTimeline = true }
+    // Settings is a pushed page, not a tab: no bottom bar, back returns
+    // to the tab list. Sheets below still render, so rows in Settings
+    // can open the debug and about sheets.
+    if (showSettings) {
+        BackHandler { showSettings = false }
+        LinkzSettingsScreen(
+            onBack = { showSettings = false },
+            onShowDebug = { showDebugSheet = true },
+            onShowAbout = { viewModel.showAppInfo() },
+            onShowPanicDialog = { showPanicDialog = true },
+            onShowBlocked = {
+                showSettings = false
+                selectedTabIndex = LinkzTab.entries.indexOf(LinkzTab.CONTACTS)
+            }
+        )
+    } else {
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            containerColor = MaterialTheme.colorScheme.background,
+            bottomBar = {
+                LinkzBottomNav(
+                    selected = selectedTab,
+                    onSelect = { selectedTabIndex = LinkzTab.entries.indexOf(it) },
+                    totalUnread = totalUnread
                 )
-                LinkzTab.CONTACTS -> LinkzContactsTab(
-                    viewModel = viewModel,
-                    connectedPeers = connectedPeers,
-                    peerNicknames = peerNicknames,
-                    favoritePeers = favoritePeers,
-                    peerFingerprints = peerFingerprints,
-                    conversations = conversations
-                )
-                LinkzTab.DISCOVER -> LinkzDiscoverTab(
-                    viewModel = viewModel,
-                    connectedPeersCount = connectedPeers.size,
-                    joinedChannels = joinedChannels,
-                    onOpenMeshTimeline = { showMeshTimeline = true },
-                    onShowLocationChannels = { showLocationChannelsSheet = true }
-                )
-                LinkzTab.ME -> LinkzMeTab(
-                    viewModel = viewModel,
-                    nickname = nickname,
-                    isConnected = isConnected,
-                    nearbyCount = connectedPeers.size,
-                    onShowDebug = { showDebugSheet = true },
-                    onShowPanicDialog = { showPanicDialog = true }
-                )
+            }
+        ) { innerPadding ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+            ) {
+                when (selectedTab) {
+                    LinkzTab.CHATS -> LinkzChatsTab(
+                        viewModel = viewModel,
+                        conversations = conversations,
+                        joinedChannels = joinedChannels,
+                        isConnected = isConnected,
+                        remarksTick = remarksTick,
+                        onOpenMeshTimeline = { showMeshTimeline = true }
+                    )
+                    LinkzTab.CONTACTS -> LinkzContactsTab(
+                        viewModel = viewModel,
+                        connectedPeers = connectedPeers,
+                        peerNicknames = peerNicknames,
+                        favoritePeers = favoritePeers,
+                        peerFingerprints = peerFingerprints,
+                        conversations = conversations,
+                        remarksTick = remarksTick
+                    )
+                    LinkzTab.DISCOVER -> LinkzDiscoverTab(
+                        viewModel = viewModel,
+                        connectedPeersCount = connectedPeers.size,
+                        joinedChannels = joinedChannels,
+                        onOpenMeshTimeline = { showMeshTimeline = true },
+                        onShowLocationChannels = { showLocationChannelsSheet = true }
+                    )
+                    LinkzTab.ME -> LinkzMeTab(
+                        viewModel = viewModel,
+                        nickname = nickname,
+                        isConnected = isConnected,
+                        nearbyCount = connectedPeers.size,
+                        onShowSettings = { showSettings = true }
+                    )
+                }
             }
         }
     }
@@ -283,11 +314,19 @@ private fun LinkzChatsTab(
     viewModel: ChatViewModel,
     conversations: List<com.bitchat.android.ui.ConversationSummary>,
     joinedChannels: Set<String>,
+    isConnected: Boolean,
+    remarksTick: Int,
     onOpenMeshTimeline: () -> Unit
 ) {
     var query by remember { mutableStateOf("") }
     var showSearch by remember { mutableStateOf(false) }
     var showAddMenu by remember { mutableStateOf(false) }
+    var showJoinChannelDialog by remember { mutableStateOf(false) }
+    var joinChannelName by remember { mutableStateOf("") }
+    // remarksTick is a recomposition trigger: when a remark changes,
+    // this tab re-reads viewModel.getRemark for every row below.
+    @Suppress("UNUSED_VARIABLE")
+    val remarkVersion = remarksTick
     val filtered = conversations.filter {
         query.isBlank() ||
             it.displayName.contains(query, ignoreCase = true) ||
@@ -323,6 +362,55 @@ private fun LinkzChatsTab(
                     viewModel.showMeshPeerList()
                 }
             )
+            DropdownMenuItem(
+                text = { Text(text = "Join channel") },
+                onClick = {
+                    showAddMenu = false
+                    joinChannelName = ""
+                    showJoinChannelDialog = true
+                }
+            )
+        }
+        if (!isConnected) {
+            Text(
+                text = "Mesh offline",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+            )
+        }
+        if (showJoinChannelDialog) {
+            AlertDialog(
+                onDismissRequest = { showJoinChannelDialog = false },
+                title = { Text(text = "Join channel") },
+                text = {
+                    TextField(
+                        value = joinChannelName,
+                        onValueChange = { joinChannelName = it },
+                        placeholder = { Text(text = "Channel name") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            val name = joinChannelName.trim()
+                            showJoinChannelDialog = false
+                            if (name.isNotBlank() && viewModel.joinChannel(name)) {
+                                viewModel.switchToChannel(name)
+                            }
+                        }
+                    ) {
+                        Text(text = "Join")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showJoinChannelDialog = false }) {
+                        Text(text = "Cancel")
+                    }
+                }
+            )
         }
         if (showSearch) {
             LinkzSearchField(query = query, onQueryChange = { query = it })
@@ -349,18 +437,9 @@ private fun LinkzChatsTab(
                 )
             }
             items(filtered, key = { it.conversationID }) { summary ->
-                val preview = summary.draft
-                    ?.takeIf { it.isNotBlank() }
-                    ?.let { "Draft: $it" }
-                    ?: summary.latestMessagePreview
-                LinkzChatRow(
-                    name = summary.displayName,
-                    preview = preview,
-                    timeLabel = formatChatTime(summary.latestMessageAt),
-                    unreadCount = summary.unreadCount,
-                    avatarColor = linkzAvatarColor(summary.conversationID),
-                    isMuted = summary.isMuted,
-                    onClick = { viewModel.showPrivateChatSheet(summary.conversationID) }
+                LinkzSwipeableChatRow(
+                    summary = summary,
+                    viewModel = viewModel
                 )
             }
             if (filtered.isEmpty() && joinedChannels.isEmpty()) {
@@ -390,6 +469,95 @@ private fun LinkzChatsTab(
     }
 }
 
+/**
+ * A private-chat row with WeChat-style swipe actions. Swiping left
+ * reveals buttons; it never deletes on its own. Pin, mute, mark
+ * read/unread, and delete all call existing ViewModel actions, so
+ * no engine change was needed. Channel and #mesh rows stay plain.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun LinkzSwipeableChatRow(
+    summary: com.bitchat.android.ui.ConversationSummary,
+    viewModel: ChatViewModel
+) {
+    val scope = rememberCoroutineScope()
+    val dismissState = rememberSwipeToDismissBoxState(
+        confirmValueChange = { false }
+    )
+    val preview = summary.draft
+        ?.takeIf { it.isNotBlank() }
+        ?.let { "Draft: $it" }
+        ?: summary.latestMessagePreview
+    val shownName = viewModel.getRemark(
+        summary.connectedPeerID ?: summary.conversationID
+    ) ?: summary.displayName
+    SwipeToDismissBox(
+        state = dismissState,
+        enableDismissFromStartToEnd = false,
+        backgroundContent = {
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextButton(
+                    onClick = {
+                        scope.launch {
+                            viewModel.setConversationRead(
+                                summary.conversationID,
+                                summary.unreadCount == 0
+                            )
+                            dismissState.reset()
+                        }
+                    }
+                ) {
+                    Text(text = if (summary.unreadCount > 0) "Read" else "Unread")
+                }
+                TextButton(
+                    onClick = {
+                        viewModel.toggleConversationPinned(summary.conversationID)
+                        scope.launch { dismissState.reset() }
+                    }
+                ) {
+                    Text(text = if (summary.isPinned) "Unpin" else "Pin")
+                }
+                TextButton(
+                    onClick = {
+                        viewModel.toggleConversationMuted(summary.conversationID)
+                        scope.launch { dismissState.reset() }
+                    }
+                ) {
+                    Text(text = if (summary.isMuted) "Unmute" else "Mute")
+                }
+                TextButton(
+                    onClick = {
+                        scope.launch {
+                            viewModel.deletePrivateConversation(summary.conversationID)
+                            dismissState.reset()
+                        }
+                    }
+                ) {
+                    Text(
+                        text = "Delete",
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+        }
+    ) {
+        LinkzChatRow(
+            name = shownName,
+            preview = preview,
+            timeLabel = formatChatTime(summary.latestMessageAt),
+            unreadCount = summary.unreadCount,
+            avatarColor = linkzAvatarColor(summary.conversationID),
+            isMuted = summary.isMuted,
+            onClick = { viewModel.showPrivateChatSheet(summary.conversationID) }
+        )
+    }
+}
+
 @Composable
 private fun LinkzContactsTab(
     viewModel: ChatViewModel,
@@ -397,39 +565,48 @@ private fun LinkzContactsTab(
     peerNicknames: Map<String, String>,
     favoritePeers: Set<String>,
     peerFingerprints: Map<String, String>,
-    conversations: List<com.bitchat.android.ui.ConversationSummary>
+    conversations: List<com.bitchat.android.ui.ConversationSummary>,
+    remarksTick: Int
 ) {
     var query by remember { mutableStateOf("") }
     var showSearch by remember { mutableStateOf(false) }
     var showAddMenu by remember { mutableStateOf(false) }
     var selectedContactId by remember { mutableStateOf<String?>(null) }
+    var showAddByIdDialog by remember { mutableStateOf(false) }
+    var addByIdInput by remember { mutableStateOf("") }
+    var addByIdNote by remember { mutableStateOf<String?>(null) }
     // Block state is not a StateFlow, so bump this after a block/unblock
     // to recompute the list below.
     var blockTick by remember { mutableStateOf(0) }
     val verifiedFingerprints by viewModel.verifiedFingerprints.collectAsStateWithLifecycle()
     val baseContacts = remember(
         connectedPeers, peerNicknames, favoritePeers, peerFingerprints,
-        conversations, verifiedFingerprints, blockTick
+        conversations, verifiedFingerprints, blockTick, remarksTick
     ) {
         val fromPeers = connectedPeers.map { peerID ->
             val fingerprint = peerFingerprints[peerID]
+            val nickname = peerNicknames[peerID] ?: peerID.take(12)
+            val remark = viewModel.getRemark(peerID)
             LinkzContact(
                 id = peerID,
-                displayName = peerNicknames[peerID] ?: peerID.take(12),
+                displayName = remark ?: nickname,
                 isFavorite = fingerprint != null && favoritePeers.contains(fingerprint),
                 isConnected = true,
                 fingerprint = fingerprint,
                 isVerified = fingerprint != null && verifiedFingerprints.contains(fingerprint),
-                isBlocked = viewModel.isPeerBlocked(peerID)
+                isBlocked = viewModel.isPeerBlocked(peerID),
+                remark = remark,
+                nickname = if (remark != null) nickname else null
             )
         }
         val fromConversations = conversations.map { summary ->
             val peerID = summary.connectedPeerID ?: summary.conversationID
             val fingerprint = summary.connectedPeerID?.let { peerFingerprints[it] }
                 ?: peerFingerprints[summary.conversationID]
+            val remark = viewModel.getRemark(peerID)
             LinkzContact(
                 id = summary.conversationID,
-                displayName = summary.displayName,
+                displayName = remark ?: summary.displayName,
                 isFavorite = fingerprint != null && favoritePeers.contains(fingerprint) ||
                     favoritePeers.contains(summary.conversationID),
                 isConnected = summary.isConnected,
@@ -438,7 +615,9 @@ private fun LinkzContactsTab(
                 isBlocked = viewModel.isPeerBlocked(peerID),
                 isMuted = summary.isMuted,
                 peerID = peerID,
-                conversationID = summary.conversationID
+                conversationID = summary.conversationID,
+                remark = remark,
+                nickname = if (remark != null) summary.displayName else null
             )
         }
         dedupeLinkzContacts(fromPeers + fromConversations)
@@ -475,6 +654,73 @@ private fun LinkzContactsTab(
                 onClick = {
                     showAddMenu = false
                     viewModel.showMeshPeerList()
+                }
+            )
+            DropdownMenuItem(
+                text = { Text(text = "Add by ID") },
+                onClick = {
+                    showAddMenu = false
+                    addByIdInput = ""
+                    addByIdNote = null
+                    showAddByIdDialog = true
+                }
+            )
+        }
+        if (showAddByIdDialog) {
+            AlertDialog(
+                onDismissRequest = { showAddByIdDialog = false },
+                title = { Text(text = "Add by ID") },
+                text = {
+                    Column {
+                        Text(
+                            text = "Paste a peer's Linkz ID or fingerprint. " +
+                                "IDs only match people in range.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        TextField(
+                            value = addByIdInput,
+                            onValueChange = { addByIdInput = it },
+                            placeholder = { Text(text = "Linkz ID or fingerprint") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        if (addByIdNote != null) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = addByIdNote!!,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            val input = addByIdInput.trim()
+                            val match = baseContacts.firstOrNull { contact ->
+                                contact.fingerprint?.equals(input, ignoreCase = true) == true ||
+                                    contact.id.equals(input, ignoreCase = true) ||
+                                    contact.peerID.equals(input, ignoreCase = true)
+                            }
+                            if (match != null) {
+                                showAddByIdDialog = false
+                                selectedContactId = match.id
+                            } else {
+                                addByIdNote = "No nearby peer matches that ID. " +
+                                    "Ask them to share their QR code."
+                            }
+                        }
+                    ) {
+                        Text(text = "Find")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showAddByIdDialog = false }) {
+                        Text(text = "Cancel")
+                    }
                 }
             )
         }
@@ -543,7 +789,9 @@ private fun LinkzContactsTab(
                     viewModel.blockPeer(selectedContact.peerID)
                 }
                 blockTick++
-            }
+            },
+            remark = selectedContact.remark,
+            onSetRemark = { viewModel.setRemark(selectedContact.peerID, it) }
         )
     }
 }
@@ -628,8 +876,7 @@ private fun LinkzMeTab(
     nickname: String,
     isConnected: Boolean,
     nearbyCount: Int,
-    onShowDebug: () -> Unit,
-    onShowPanicDialog: () -> Unit
+    onShowSettings: () -> Unit
 ) {
     val displayName = nickname.ifBlank { "Set a nickname" }
     val fingerprint = try {
@@ -638,6 +885,16 @@ private fun LinkzMeTab(
         ""
     }
     var showNicknameSheet by remember { mutableStateOf(false) }
+    // The photo is local only, like the onboarding photo: changing it
+    // here updates this phone's Me header, not what peers see.
+    var ownAvatar by remember { mutableStateOf(viewModel.loadAvatarBitmap()) }
+    val pickPhoto = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null && viewModel.setAvatarFromUri(uri)) {
+            ownAvatar = viewModel.loadAvatarBitmap()
+        }
+    }
     Column(modifier = Modifier.fillMaxSize()) {
         LinkzTopBar(title = "Me")
         Surface(
@@ -647,29 +904,39 @@ private fun LinkzMeTab(
             androidx.compose.foundation.layout.Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable(role = Role.Button) { showNicknameSheet = true }
                     .padding(16.dp),
                 verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
             ) {
-                val ownAvatar = remember { viewModel.loadAvatarBitmap() }
-                if (ownAvatar != null) {
-                    Image(
-                        bitmap = ownAvatar,
-                        contentDescription = "Your photo",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .size(64.dp)
-                            .clip(RoundedCornerShape(6.dp))
-                    )
-                } else {
-                    LinkzAvatar(
-                        name = displayName,
-                        color = linkzAvatarColor(displayName),
-                        size = 64.dp
-                    )
+                androidx.compose.foundation.layout.Box(
+                    modifier = Modifier
+                        .clickable(role = Role.Button) {
+                            pickPhoto.launch("image/*")
+                        }
+                        .semantics { contentDescription = "Change photo" }
+                ) {
+                    if (ownAvatar != null) {
+                        Image(
+                            bitmap = ownAvatar!!,
+                            contentDescription = "Your photo",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .size(64.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                        )
+                    } else {
+                        LinkzAvatar(
+                            name = displayName,
+                            color = linkzAvatarColor(displayName),
+                            size = 64.dp
+                        )
+                    }
                 }
                 Spacer(modifier = Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable(role = Role.Button) { showNicknameSheet = true }
+                ) {
                     Text(
                         text = displayName,
                         style = MaterialTheme.typography.titleLarge,
@@ -699,21 +966,9 @@ private fun LinkzMeTab(
         Spacer(modifier = Modifier.height(8.dp))
         LinkzSectionHeader(text = "App")
         LinkzMenuRow(
-            title = "About Linkz",
-            subtitle = "App info and QR code",
-            onClick = { viewModel.showAppInfo() }
-        )
-        LinkzMenuRow(
-            title = "Debug settings",
-            subtitle = "Mesh and transport options",
-            onClick = onShowDebug
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        LinkzSectionHeader(text = "Danger")
-        LinkzMenuRow(
-            title = "Clear all data",
-            subtitle = "Erases all messages and keys on this device",
-            onClick = onShowPanicDialog
+            title = "Settings",
+            subtitle = "Appearance, language, notifications, blocked, debug",
+            onClick = onShowSettings
         )
     }
     if (showNicknameSheet) {

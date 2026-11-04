@@ -22,6 +22,10 @@ data class LinkzContact(
     val isMuted: Boolean = false,
     /** Peer id to use for favorite/block/verify actions; defaults to [id]. */
     val peerID: String = id,
+    /** Local remark name, when set; [displayName] already shows it. */
+    val remark: String? = null,
+    /** The peer's own nickname, shown only when a remark overrides it. */
+    val nickname: String? = null,
     /** Conversation id for message/mute actions, when this contact has one. */
     val conversationID: String? = null
 )
