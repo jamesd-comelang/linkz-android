@@ -12,16 +12,24 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ChatBubble
+import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.Tag
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -38,6 +46,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -162,6 +171,9 @@ fun LinkzShell(viewModel: ChatViewModel) {
                     LinkzTab.CHATS -> LinkzChatsTab(
                         viewModel = viewModel,
                         conversations = conversations,
+                        connectedPeers = connectedPeers,
+                        peerNicknames = peerNicknames,
+                        peerFingerprints = peerFingerprints,
                         joinedChannels = joinedChannels,
                         isConnected = isConnected,
                         remarksTick = remarksTick,
@@ -316,6 +328,9 @@ private fun LinkzSearchField(
 private fun LinkzChatsTab(
     viewModel: ChatViewModel,
     conversations: List<com.bitchat.android.ui.ConversationSummary>,
+    connectedPeers: List<String>,
+    peerNicknames: Map<String, String>,
+    peerFingerprints: Map<String, String>,
     joinedChannels: Set<String>,
     isConnected: Boolean,
     remarksTick: Int,
@@ -328,6 +343,48 @@ private fun LinkzChatsTab(
     var showAddMenu by remember { mutableStateOf(false) }
     var showJoinChannelDialog by remember { mutableStateOf(false) }
     var joinChannelName by remember { mutableStateOf("") }
+    var showNewChatPicker by remember { mutableStateOf(false) }
+    var showAddContactsSheet by remember { mutableStateOf(false) }
+    var showAddByIdDialog by remember { mutableStateOf(false) }
+    var addByIdInput by remember { mutableStateOf("") }
+    var addByIdNote by remember { mutableStateOf<String?>(null) }
+    // Same people list as the Contacts tab: nearby peers plus past
+    // conversations, deduped, blocked peers left out. Powers both the
+    // New Chat picker and Add by ID matching.
+    val people = remember(
+        connectedPeers, peerNicknames, peerFingerprints,
+        conversations, remarksTick
+    ) {
+        val fromPeers = connectedPeers
+            .filter { !viewModel.isPeerBlocked(it) }
+            .map { peerID ->
+                val remark = viewModel.getRemark(peerID)
+                LinkzContact(
+                    id = peerID,
+                    displayName = remark ?: peerNicknames[peerID] ?: peerID.take(12),
+                    isConnected = true,
+                    fingerprint = peerFingerprints[peerID],
+                    remark = remark,
+                    nickname = if (remark != null) peerNicknames[peerID] else null
+                )
+            }
+        val fromConversations = conversations.map { summary ->
+            val peerID = summary.connectedPeerID ?: summary.conversationID
+            val remark = viewModel.getRemark(peerID)
+            LinkzContact(
+                id = summary.conversationID,
+                displayName = remark ?: summary.displayName,
+                isConnected = summary.isConnected,
+                isBlocked = viewModel.isPeerBlocked(peerID),
+                peerID = peerID,
+                conversationID = summary.conversationID,
+                remark = remark,
+                nickname = if (remark != null) summary.displayName else null
+            )
+        }
+        dedupeLinkzContacts(fromPeers + fromConversations)
+            .filter { !it.isBlocked }
+    }
     // remarksTick is a recomposition trigger: when a remark changes,
     // this tab re-reads viewModel.getRemark for every row below.
     @Suppress("UNUSED_VARIABLE")
@@ -364,26 +421,69 @@ private fun LinkzChatsTab(
             },
             onAddClick = { showAddMenu = true }
         )
+        // WeChat's + menu: dark popup, icon rows, New Chat first, then
+        // Add Contacts, then Scan. Join channel stays last: it has no
+        // WeChat equivalent, but dropping it would lose a Linkz feature.
+        // Money is deliberately left out: Linkz has no payments.
         DropdownMenu(
             expanded = showAddMenu,
-            onDismissRequest = { showAddMenu = false }
+            onDismissRequest = { showAddMenu = false },
+            containerColor = Color(0xFF4C4C4C)
         ) {
             DropdownMenuItem(
-                text = { Text(text = "Scan QR") },
+                text = { Text(text = "New Chat", color = Color.White) },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Filled.ChatBubble,
+                        contentDescription = null,
+                        tint = Color.White
+                    )
+                },
+                onClick = {
+                    showAddMenu = false
+                    showNewChatPicker = true
+                }
+            )
+            HorizontalDivider(color = Color.White.copy(alpha = 0.2f))
+            DropdownMenuItem(
+                text = { Text(text = "Add Contacts", color = Color.White) },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Filled.PersonAdd,
+                        contentDescription = null,
+                        tint = Color.White
+                    )
+                },
+                onClick = {
+                    showAddMenu = false
+                    showAddContactsSheet = true
+                }
+            )
+            HorizontalDivider(color = Color.White.copy(alpha = 0.2f))
+            DropdownMenuItem(
+                text = { Text(text = "Scan", color = Color.White) },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Filled.QrCodeScanner,
+                        contentDescription = null,
+                        tint = Color.White
+                    )
+                },
                 onClick = {
                     showAddMenu = false
                     viewModel.showVerificationSheet()
                 }
             )
+            HorizontalDivider(color = Color.White.copy(alpha = 0.2f))
             DropdownMenuItem(
-                text = { Text(text = "Nearby people") },
-                onClick = {
-                    showAddMenu = false
-                    viewModel.showMeshPeerList()
-                }
-            )
-            DropdownMenuItem(
-                text = { Text(text = "Join channel") },
+                text = { Text(text = "Join channel", color = Color.White) },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Filled.Tag,
+                        contentDescription = null,
+                        tint = Color.White
+                    )
+                },
                 onClick = {
                     showAddMenu = false
                     joinChannelName = ""
@@ -427,6 +527,159 @@ private fun LinkzChatsTab(
                 },
                 dismissButton = {
                     TextButton(onClick = { showJoinChannelDialog = false }) {
+                        Text(text = "Cancel")
+                    }
+                }
+            )
+        }
+        if (showNewChatPicker) {
+            AlertDialog(
+                onDismissRequest = { showNewChatPicker = false },
+                title = { Text(text = "New Chat") },
+                text = {
+                    if (people.isEmpty()) {
+                        Text(
+                            text = "No contacts yet. People nearby " +
+                                "will appear here.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier.heightIn(max = 400.dp)
+                        ) {
+                            items(people, key = { it.id.lowercase() }) { contact ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            showNewChatPicker = false
+                                            viewModel.showPrivateChatSheet(
+                                                contact.conversationID ?: contact.id
+                                            )
+                                        }
+                                        .padding(vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    LinkzAvatar(
+                                        name = contact.displayName,
+                                        color = linkzAvatarColor(contact.id),
+                                        size = 40.dp
+                                    )
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Text(
+                                        text = contact.displayName,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {},
+                dismissButton = {
+                    TextButton(onClick = { showNewChatPicker = false }) {
+                        Text(text = "Cancel")
+                    }
+                }
+            )
+        }
+        if (showAddContactsSheet) {
+            AlertDialog(
+                onDismissRequest = { showAddContactsSheet = false },
+                title = { Text(text = "Add Contacts") },
+                text = {
+                    Column {
+                        LinkzMenuRow(
+                            title = "Scan QR",
+                            onClick = {
+                                showAddContactsSheet = false
+                                viewModel.showVerificationSheet()
+                            }
+                        )
+                        LinkzMenuRow(
+                            title = "Nearby people",
+                            onClick = {
+                                showAddContactsSheet = false
+                                viewModel.showMeshPeerList()
+                            }
+                        )
+                        LinkzMenuRow(
+                            title = "Add by ID",
+                            onClick = {
+                                showAddContactsSheet = false
+                                addByIdInput = ""
+                                addByIdNote = null
+                                showAddByIdDialog = true
+                            }
+                        )
+                    }
+                },
+                confirmButton = {},
+                dismissButton = {
+                    TextButton(onClick = { showAddContactsSheet = false }) {
+                        Text(text = "Cancel")
+                    }
+                }
+            )
+        }
+        if (showAddByIdDialog) {
+            AlertDialog(
+                onDismissRequest = { showAddByIdDialog = false },
+                title = { Text(text = "Add by ID") },
+                text = {
+                    Column {
+                        Text(
+                            text = "Paste a peer's Linkz ID or fingerprint.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        TextField(
+                            value = addByIdInput,
+                            onValueChange = { addByIdInput = it },
+                            placeholder = { Text(text = "Linkz ID or fingerprint") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        if (addByIdNote != null) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = addByIdNote!!,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            val input = addByIdInput.trim()
+                            val match = people.firstOrNull { contact ->
+                                contact.fingerprint?.equals(input, ignoreCase = true) == true ||
+                                    contact.id.equals(input, ignoreCase = true) ||
+                                    contact.peerID.equals(input, ignoreCase = true)
+                            }
+                            if (match != null) {
+                                showAddByIdDialog = false
+                                viewModel.showPrivateChatSheet(
+                                    match.conversationID ?: match.id
+                                )
+                            } else {
+                                addByIdNote = "No nearby peer matches that ID. " +
+                                    "Ask them to share their QR code."
+                            }
+                        }
+                    ) {
+                        Text(text = "Find")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showAddByIdDialog = false }) {
                         Text(text = "Cancel")
                     }
                 }
