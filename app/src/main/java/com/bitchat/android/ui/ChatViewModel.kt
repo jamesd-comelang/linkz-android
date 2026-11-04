@@ -1151,6 +1151,53 @@ class ChatViewModel(
     fun setAvatarFromUri(uri: android.net.Uri): Boolean =
         dataManager.saveAvatarFromUri(uri)
 
+    // Linkz DM message menu support: local delete and forward. Forward
+    // reuses the exact private-send path sendMessage uses (same packets,
+    // no protocol change); quote, recall, and reactions stay out because
+    // they need wire support the mesh does not have.
+    fun deleteMessageLocally(messageID: String) {
+        messageManager.removeMessageById(messageID)
+    }
+
+    fun forwardMessage(
+        targetPeerID: String,
+        content: String,
+        onAccepted: (Boolean) -> Unit = {}
+    ) {
+        if (content.isEmpty()) {
+            onAccepted(false)
+            return
+        }
+        val recipientNickname = nicknameForPeer(targetPeerID)
+        viewModelScope.launch {
+            val accepted = privateChatManager.sendPrivateMessageDurably(
+                content,
+                targetPeerID,
+                recipientNickname,
+                state.getNicknameValue(),
+                mesh.myPeerID
+            ) { messageContent, peerID, recipientNicknameParam, messageId ->
+                val router = com.bitchat.android.services.MessageRouter.getInstance(
+                    getApplication(),
+                    mesh
+                )
+                val route = router.sendPrivate(
+                    messageContent,
+                    peerID,
+                    recipientNicknameParam,
+                    messageId
+                )
+                if (route == com.bitchat.android.services.MessageRouter.RouteResult.NOSTR) {
+                    messageManager.updateMessageDeliveryStatus(
+                        messageId,
+                        com.bitchat.android.model.DeliveryStatus.Sent
+                    )
+                }
+            }
+            onAccepted(accepted)
+        }
+    }
+
     // Thin wrappers so the Linkz Contacts tab can block and unblock peers
     // through the existing PrivateChatManager; no protocol change.
     fun blockPeer(peerID: String): Boolean {

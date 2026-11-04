@@ -1809,6 +1809,12 @@ fun PrivateChatSheet(
             sheetState = sheetState,
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
+                // WeChat-style long-press menu for DM messages. Until
+                // now this was a no-op stub, so DMs had no Copy,
+                // Forward, or Delete at all.
+                var menuMessage by remember {
+                    mutableStateOf<com.bitchat.android.model.BitchatMessage?>(null)
+                }
                 Column(
                     modifier = Modifier.fillMaxSize()
                 ) {
@@ -1829,7 +1835,7 @@ fun PrivateChatSheet(
                         forceScrollToBottom = forceScrollToBottom,
                         onScrolledUpChanged = { isUp -> isScrolledUp = isUp },
                         onNicknameClick = { /* handle mention */ },
-                        onMessageLongPress = { /* handle long press */ },
+                        onMessageLongPress = { menuMessage = it },
                         onCancelTransfer = { msg -> viewModel.cancelMediaSend(msg.id) },
                         onImageClick = { _, _, _ -> /* handle image click */ }
                     )
@@ -1970,6 +1976,14 @@ fun PrivateChatSheet(
                         val dismiss = LocalSheetDismiss.current
                         CloseButton(onClick = { dismiss?.invoke() ?: onDismiss() })
                     }
+                }
+                if (menuMessage != null) {
+                    com.bitchat.android.ui.linkz.LinkzMessageMenuSheet(
+                        message = menuMessage!!,
+                        viewModel = viewModel,
+                        currentPeerID = peerID,
+                        onDismiss = { menuMessage = null }
+                    )
                 }
             }
         }

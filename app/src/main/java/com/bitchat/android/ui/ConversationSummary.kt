@@ -173,7 +173,11 @@ private fun isNostrConversationKey(value: String): Boolean =
     value.startsWith("nostr_") || value.startsWith("nostr:")
 
 private fun BitchatMessage.conversationPreview(): String {
+    // WeChat-style labels: a voice note or photo shows its kind, not
+    // the file path or empty content behind it.
     val preview = when (type) {
+        BitchatMessageType.Audio -> "[Voice]"
+        BitchatMessageType.Image -> "[Photo]"
         BitchatMessageType.File -> content
             .substringAfterLast('/')
             .substringAfterLast('\\')

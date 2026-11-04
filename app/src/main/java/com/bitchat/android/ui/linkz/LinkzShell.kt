@@ -94,6 +94,7 @@ fun LinkzShell(viewModel: ChatViewModel) {
     val joinedChannels by viewModel.joinedChannels.collectAsStateWithLifecycle()
     val unreadChannelMessages by viewModel.unreadChannelMessages.collectAsStateWithLifecycle()
     val remarksTick by viewModel.remarksTick.collectAsStateWithLifecycle()
+    val privateChats by viewModel.privateChats.collectAsStateWithLifecycle()
 
     var selectedTabIndex by remember { mutableStateOf(0) }
     val selectedTab = LinkzTab.entries[selectedTabIndex]
@@ -164,6 +165,8 @@ fun LinkzShell(viewModel: ChatViewModel) {
                         joinedChannels = joinedChannels,
                         isConnected = isConnected,
                         remarksTick = remarksTick,
+                        privateChats = privateChats,
+                        totalUnread = totalUnread,
                         onOpenMeshTimeline = { showMeshTimeline = true }
                     )
                     LinkzTab.CONTACTS -> LinkzContactsTab(
@@ -316,6 +319,8 @@ private fun LinkzChatsTab(
     joinedChannels: Set<String>,
     isConnected: Boolean,
     remarksTick: Int,
+    privateChats: Map<String, List<com.bitchat.android.model.BitchatMessage>>,
+    totalUnread: Int,
     onOpenMeshTimeline: () -> Unit
 ) {
     var query by remember { mutableStateOf("") }
@@ -327,17 +332,32 @@ private fun LinkzChatsTab(
     // this tab re-reads viewModel.getRemark for every row below.
     @Suppress("UNUSED_VARIABLE")
     val remarkVersion = remarksTick
-    val filtered = conversations.filter {
-        query.isBlank() ||
-            it.displayName.contains(query, ignoreCase = true) ||
-            it.latestMessagePreview.contains(query, ignoreCase = true)
+    // WeChat search covers message text, not just names and previews:
+    // a conversation matches when any of its messages contains the
+    // query. identityAliases already holds every key form the
+    // conversation is stored under, so alias mismatches cannot hide
+    // a match. Remark names match too, since rows show the remark.
+    val filtered = conversations.filter { summary ->
+        if (query.isBlank()) return@filter true
+        val shownName = viewModel.getRemark(
+            summary.connectedPeerID ?: summary.conversationID
+        ) ?: summary.displayName
+        if (shownName.contains(query, ignoreCase = true)) return@filter true
+        if (summary.latestMessagePreview.contains(query, ignoreCase = true)) {
+            return@filter true
+        }
+        privateChats.entries
+            .filter { (key, _) -> key.lowercase() in summary.identityAliases }
+            .flatMap { it.value }
+            .any { it.content.contains(query, ignoreCase = true) }
     }
     Column(modifier = Modifier.fillMaxSize()) {
         // WeChat-style header: plain title, no mesh-status subtitle (mesh
         // status still shows on Discover and Me). Search lives behind the
         // top-bar icon instead of a permanent field in the list.
         LinkzTopBar(
-            title = "Linkz",
+            // WeChat shows the unread count in the Chats title.
+            title = if (totalUnread > 0) "Linkz ($totalUnread)" else "Linkz",
             onSearchClick = {
                 showSearch = !showSearch
                 if (!showSearch) query = ""
