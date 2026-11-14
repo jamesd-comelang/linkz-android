@@ -34,6 +34,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.createBitmap
+import androidx.core.graphics.set
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bitchat.android.nostr.InviteCodeManager
 import com.bitchat.android.ui.ChatViewModel
