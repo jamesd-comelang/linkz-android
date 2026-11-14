@@ -1,8 +1,6 @@
 package com.bitchat.android.ui.linkz
 
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -19,11 +17,17 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChatBubble
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Tag
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -43,7 +47,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
@@ -103,6 +106,7 @@ fun LinkzShell(viewModel: ChatViewModel) {
     val joinedChannels by viewModel.joinedChannels.collectAsStateWithLifecycle()
     val unreadChannelMessages by viewModel.unreadChannelMessages.collectAsStateWithLifecycle()
     val remarksTick by viewModel.remarksTick.collectAsStateWithLifecycle()
+    val profileTick by viewModel.profileTick.collectAsStateWithLifecycle()
     val privateChats by viewModel.privateChats.collectAsStateWithLifecycle()
 
     var selectedTabIndex by remember { mutableStateOf(0) }
@@ -112,6 +116,7 @@ fun LinkzShell(viewModel: ChatViewModel) {
     var showLocationChannelsSheet by remember { mutableStateOf(false) }
     var showPanicDialog by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+    var showProfile by remember { mutableStateOf(false) }
 
     val inTimeline = currentChannel != null ||
         selectedLocationChannel is ChannelID.Location ||
@@ -135,10 +140,17 @@ fun LinkzShell(viewModel: ChatViewModel) {
     val totalUnread = conversations.sumOf { it.unreadCount } +
         unreadChannelMessages.values.sum()
 
-    // Settings is a pushed page, not a tab: no bottom bar, back returns
-    // to the tab list. Sheets below still render, so rows in Settings
-    // can open the debug and about sheets.
-    if (showSettings) {
+    // Profile and Settings are pushed pages, not tabs: no bottom bar,
+    // back returns to the tab list. Sheets below still render, so rows
+    // in either page can open the QR and about sheets.
+    if (showProfile) {
+        BackHandler { showProfile = false }
+        LinkzProfileScreen(
+            viewModel = viewModel,
+            nickname = nickname,
+            onBack = { showProfile = false }
+        )
+    } else if (showSettings) {
         BackHandler { showSettings = false }
         LinkzSettingsScreen(
             onBack = { showSettings = false },
@@ -202,7 +214,12 @@ fun LinkzShell(viewModel: ChatViewModel) {
                         nickname = nickname,
                         isConnected = isConnected,
                         nearbyCount = connectedPeers.size,
-                        onShowSettings = { showSettings = true }
+                        profileTick = profileTick,
+                        onShowProfile = { showProfile = true },
+                        onShowSettings = { showSettings = true },
+                        onShowFavorites = {
+                            selectedTabIndex = LinkzTab.entries.indexOf(LinkzTab.CONTACTS)
+                        }
                     )
                 }
             }
@@ -1144,12 +1161,25 @@ private fun LinkzDiscoverTab(
 }
 
 @Composable
+/**
+ * Me tab, copied from WeChat's Me page: no top bar, the profile
+ * header first (photo, name, Linkz ID, QR button, chevron into the
+ * Profile page), then icon rows, then the Mesh status. The header
+ * tap opens the Profile page, where the photo and nickname are
+ * edited; the + Status pill edits the same What's Up line the
+ * Profile page shows. Left out, because Linkz has no equivalent:
+ * Pay and Services, My Posts (needs Moments), Stores and Cards,
+ * Sticker Gallery. Icons are Material icons, not WeChat artwork.
+ */
 private fun LinkzMeTab(
     viewModel: ChatViewModel,
     nickname: String,
     isConnected: Boolean,
     nearbyCount: Int,
-    onShowSettings: () -> Unit
+    profileTick: Int,
+    onShowProfile: () -> Unit,
+    onShowSettings: () -> Unit,
+    onShowFavorites: () -> Unit
 ) {
     val displayName = nickname.ifBlank { "Set a nickname" }
     val fingerprint = try {
@@ -1157,22 +1187,21 @@ private fun LinkzMeTab(
     } catch (_: Exception) {
         ""
     }
-    var showNicknameSheet by remember { mutableStateOf(false) }
-    // The photo is local only, like the onboarding photo: changing it
-    // here updates this phone's Me header, not what peers see.
-    var ownAvatar by remember { mutableStateOf(viewModel.loadAvatarBitmap()) }
-    val pickPhoto = rememberLauncherForActivityResult(
-        ActivityResultContracts.GetContent()
-    ) { uri ->
-        if (uri != null && viewModel.setAvatarFromUri(uri)) {
-            ownAvatar = viewModel.loadAvatarBitmap()
-        }
-    }
+    // profileTick is a recomposition trigger: when a profile field
+    // changes, this tab re-reads the status line below.
+    @Suppress("UNUSED_VARIABLE")
+    val profileVersion = profileTick
+    val status = viewModel.getProfileStatus()
+    // The photo is local only, like the onboarding photo: it is shown
+    // here and changed from the Profile page, not what peers see.
+    val ownAvatar = viewModel.loadAvatarBitmap()
+    var showStatusSheet by remember { mutableStateOf(false) }
+
     Column(modifier = Modifier.fillMaxSize()) {
-        LinkzTopBar(title = "Me")
         Surface(
             modifier = Modifier.fillMaxWidth(),
-            color = MaterialTheme.colorScheme.surface
+            color = MaterialTheme.colorScheme.surface,
+            onClick = onShowProfile
         ) {
             androidx.compose.foundation.layout.Row(
                 modifier = Modifier
@@ -1180,36 +1209,24 @@ private fun LinkzMeTab(
                     .padding(16.dp),
                 verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
             ) {
-                androidx.compose.foundation.layout.Box(
-                    modifier = Modifier
-                        .clickable(role = Role.Button) {
-                            pickPhoto.launch("image/*")
-                        }
-                        .semantics { contentDescription = "Change photo" }
-                ) {
-                    if (ownAvatar != null) {
-                        Image(
-                            bitmap = ownAvatar!!,
-                            contentDescription = "Your photo",
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .size(64.dp)
-                                .clip(RoundedCornerShape(6.dp))
-                        )
-                    } else {
-                        LinkzAvatar(
-                            name = displayName,
-                            color = linkzAvatarColor(displayName),
-                            size = 64.dp
-                        )
-                    }
+                if (ownAvatar != null) {
+                    Image(
+                        bitmap = ownAvatar,
+                        contentDescription = "Your photo",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(64.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                    )
+                } else {
+                    LinkzAvatar(
+                        name = displayName,
+                        color = linkzAvatarColor(displayName),
+                        size = 64.dp
+                    )
                 }
                 Spacer(modifier = Modifier.width(12.dp))
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clickable(role = Role.Button) { showNicknameSheet = true }
-                ) {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = displayName,
                         style = MaterialTheme.typography.titleLarge,
@@ -1222,9 +1239,51 @@ private fun LinkzMeTab(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = { showStatusSheet = true },
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                        modifier = Modifier.height(32.dp)
+                    ) {
+                        Text(
+                            text = if (status.isBlank()) "+ Status" else status,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
+                IconButton(onClick = { viewModel.showVerificationSheet() }) {
+                    Icon(
+                        imageVector = Icons.Filled.QrCodeScanner,
+                        contentDescription = "My QR code",
+                        modifier = Modifier.size(24.dp),
+                        tint = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                Icon(
+                    imageVector = Icons.Filled.ChevronRight,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
+        Spacer(modifier = Modifier.height(8.dp))
+        LinkzIconMenuRow(
+            icon = Icons.Filled.Star,
+            iconTint = Color(0xFFFA9D3B),
+            title = "Favorites",
+            onClick = onShowFavorites,
+            showDivider = true
+        )
+        LinkzIconMenuRow(
+            icon = Icons.Filled.Settings,
+            iconTint = Color(0xFF576B95),
+            title = "Settings",
+            onClick = onShowSettings
+        )
         Spacer(modifier = Modifier.height(8.dp))
         LinkzSectionHeader(text = "Mesh")
         LinkzMenuRow(
@@ -1236,21 +1295,18 @@ private fun LinkzMeTab(
             },
             onClick = { viewModel.showMeshPeerList() }
         )
-        Spacer(modifier = Modifier.height(8.dp))
-        LinkzSectionHeader(text = "App")
-        LinkzMenuRow(
-            title = "Settings",
-            subtitle = "Appearance, language, notifications, blocked, debug",
-            onClick = onShowSettings
-        )
     }
-    if (showNicknameSheet) {
-        LinkzNicknameSheet(
-            currentNickname = nickname,
-            onDismiss = { showNicknameSheet = false },
-            onSave = { newNickname ->
-                viewModel.setNickname(newNickname)
-                showNicknameSheet = false
+    if (showStatusSheet) {
+        LinkzTextFieldSheet(
+            title = "What's Up",
+            helper = "A short status line, shown on your Profile page and on Me.",
+            initial = status,
+            label = "What's Up",
+            allowEmpty = true,
+            onDismiss = { showStatusSheet = false },
+            onSave = { newStatus ->
+                viewModel.setProfileStatus(newStatus)
+                showStatusSheet = false
             }
         )
     }

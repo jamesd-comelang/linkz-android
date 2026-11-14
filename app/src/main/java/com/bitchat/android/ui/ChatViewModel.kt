@@ -1148,6 +1148,33 @@ class ChatViewModel(
         _remarksTick.value += 1
     }
 
+    // Linkz own profile fields: gender, region, and status ("What's
+    // Up") on the Profile page. Local only, same tick pattern as
+    // remarks — DataManager prefs are not a StateFlow.
+    private val _profileTick = MutableStateFlow(0)
+    val profileTick: StateFlow<Int> = _profileTick.asStateFlow()
+
+    fun getProfileGender(): String = dataManager.getProfileGender()
+
+    fun setProfileGender(gender: String) {
+        dataManager.setProfileGender(gender)
+        _profileTick.value += 1
+    }
+
+    fun getProfileRegion(): String = dataManager.getProfileRegion()
+
+    fun setProfileRegion(region: String) {
+        dataManager.setProfileRegion(region)
+        _profileTick.value += 1
+    }
+
+    fun getProfileStatus(): String = dataManager.getProfileStatus()
+
+    fun setProfileStatus(status: String) {
+        dataManager.setProfileStatus(status)
+        _profileTick.value += 1
+    }
+
     fun setAvatarFromUri(uri: android.net.Uri): Boolean =
         dataManager.saveAvatarFromUri(uri)
 

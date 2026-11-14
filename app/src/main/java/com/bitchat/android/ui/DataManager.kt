@@ -276,6 +276,50 @@ class DataManager(private val context: Context) {
             prefs.edit().putString("remark_$peerID", remark).apply()
         }
     }
+
+    // MARK: - Own Profile Fields (local only, like WeChat profile rows)
+
+    /**
+     * Gender, region, and status ("What's Up") are shown on the own
+     * Profile page only. They never leave this phone: the mesh carries
+     * nickname + fingerprint, nothing else about the owner. Blank
+     * clears the field, the same as remarks.
+     */
+    fun getProfileGender(): String {
+        return prefs.getString("profile_gender", "") ?: ""
+    }
+
+    fun setProfileGender(gender: String) {
+        if (gender.isBlank()) {
+            prefs.edit().remove("profile_gender").apply()
+        } else {
+            prefs.edit().putString("profile_gender", gender).apply()
+        }
+    }
+
+    fun getProfileRegion(): String {
+        return prefs.getString("profile_region", "") ?: ""
+    }
+
+    fun setProfileRegion(region: String) {
+        if (region.isBlank()) {
+            prefs.edit().remove("profile_region").apply()
+        } else {
+            prefs.edit().putString("profile_region", region).apply()
+        }
+    }
+
+    fun getProfileStatus(): String {
+        return prefs.getString("profile_status", "") ?: ""
+    }
+
+    fun setProfileStatus(status: String) {
+        if (status.isBlank()) {
+            prefs.edit().remove("profile_status").apply()
+        } else {
+            prefs.edit().putString("profile_status", status).apply()
+        }
+    }
     
     fun logAllFavorites() {
         Log.i(TAG, "=== ALL FAVORITE USERS ===")
