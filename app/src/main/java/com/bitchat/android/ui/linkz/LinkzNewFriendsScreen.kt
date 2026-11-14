@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -18,7 +19,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
@@ -26,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bitchat.android.nostr.FriendRequest
 import com.bitchat.android.nostr.FriendRequestDirection
+import com.bitchat.android.nostr.FriendRequestProtocol
 import com.bitchat.android.nostr.FriendRequestStatus
 import com.bitchat.android.services.ContactIdentityResolver
 import com.bitchat.android.ui.ChatViewModel
@@ -39,6 +43,7 @@ import com.bitchat.android.ui.ChatViewModel
 @Composable
 fun LinkzNewFriendsScreen(viewModel: ChatViewModel, onBack: () -> Unit) {
     val requests by viewModel.friendRequests.collectAsStateWithLifecycle()
+    var selectedRequest by remember { mutableStateOf<FriendRequest?>(null) }
     val sorted = remember(requests) {
         requests.sortedWith(
             compareByDescending<FriendRequest> {
@@ -66,11 +71,18 @@ fun LinkzNewFriendsScreen(viewModel: ChatViewModel, onBack: () -> Unit) {
                         request = request,
                         onAccept = { viewModel.acceptFriendRequest(request.requestId) },
                         onDecline = { viewModel.declineFriendRequest(request.requestId) },
-                        onOpenChat = { viewModel.openFriendChat(request) }
+                        onOpenChat = { viewModel.openFriendChat(request) },
+                        onShowDetail = { selectedRequest = request }
                     )
                 }
             }
         }
+    }
+    selectedRequest?.let { request ->
+        LinkzFriendRequestDetailDialog(
+            request = request,
+            onDismiss = { selectedRequest = null }
+        )
     }
 }
 
@@ -79,13 +91,11 @@ private fun LinkzFriendRequestRow(
     request: FriendRequest,
     onAccept: () -> Unit,
     onDecline: () -> Unit,
-    onOpenChat: () -> Unit
+    onOpenChat: () -> Unit,
+    onShowDetail: () -> Unit
 ) {
     val expired = request.isExpired()
-    val name = request.remoteNickname.takeIf { it.isNotBlank() }
-        ?: ContactIdentityResolver.npubFromHex(request.remotePubkeyHex)
-            ?.let { shortNpub(it) }
-        ?: "Unknown"
+    val name = requestDisplayName(request)
     val subtitle = when {
         request.status == FriendRequestStatus.ACCEPTED -> "Accepted"
         request.status == FriendRequestStatus.DECLINED -> "Declined"
@@ -104,7 +114,7 @@ private fun LinkzFriendRequestRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable(enabled = canChat) { onOpenChat() }
+                .clickable { if (canChat) onOpenChat() else onShowDetail() }
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -147,3 +157,71 @@ private fun LinkzFriendRequestRow(
 
 private fun shortNpub(npub: String): String =
     if (npub.length > 16) "${npub.take(8)}...${npub.takeLast(8)}" else npub
+
+private fun requestDisplayName(request: FriendRequest): String =
+    request.remoteNickname.takeIf { it.isNotBlank() }
+        ?: ContactIdentityResolver.npubFromHex(request.remotePubkeyHex)
+            ?.let { shortNpub(it) }
+        ?: "Unknown"
+
+private fun formatRequestDate(ms: Long): String =
+    java.text.SimpleDateFormat("MMM d, yyyy", java.util.Locale.getDefault())
+        .format(java.util.Date(ms))
+
+/**
+ * Detail for a request that is not yet an open chat: who, what was said,
+ * when it was sent and until when it stays valid. Accepted rows open the
+ * DM instead, so this only ever shows for pending, declined or expired
+ * requests. WeChat shows the same sent-request detail on tap.
+ */
+@Composable
+private fun LinkzFriendRequestDetailDialog(
+    request: FriendRequest,
+    onDismiss: () -> Unit
+) {
+    val expired = request.isExpired()
+    val status = when {
+        request.status == FriendRequestStatus.ACCEPTED -> "Accepted"
+        request.status == FriendRequestStatus.DECLINED -> "Declined"
+        expired -> "Expired"
+        else -> "Waiting for accept"
+    }
+    val direction = if (request.direction == FriendRequestDirection.INCOMING) {
+        "This person wants to add you."
+    } else {
+        "You sent this request."
+    }
+    val lines = buildList {
+        add(direction)
+        if (request.greeting.isNotBlank()) add("Message: ${request.greeting}")
+        add("Sent: ${formatRequestDate(request.createdAtMs)}")
+        if (request.status == FriendRequestStatus.PENDING && !expired) {
+            add(
+                "Valid until: " +
+                    formatRequestDate(
+                        request.createdAtMs + FriendRequestProtocol.REQUEST_VALIDITY_MS
+                    )
+            )
+        }
+        add("Status: $status")
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(text = requestDisplayName(request)) },
+        text = {
+            Column {
+                lines.forEach { line ->
+                    Text(
+                        text = line,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 2.dp)
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(text = "Close") }
+        }
+    )
+}
