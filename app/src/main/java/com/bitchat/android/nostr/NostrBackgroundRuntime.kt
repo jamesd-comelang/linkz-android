@@ -104,6 +104,34 @@ object NostrBackgroundRuntime {
                 eventProcessor.onAccountDm(event, identity)
             }
         )
+        subscribeInviteDm()
+    }
+
+    /**
+     * Gift-wrap subscription for a live one-time invite code, so friend
+     * requests can arrive while the app runs in the background. Re-run
+     * whenever the invite is created, regenerated, or consumed.
+     */
+    fun refreshInviteSubscription() {
+        if (!initialized) return
+        subscriptions.unsubscribe("invite-messages")
+        scope.launch {
+            // Let the CLOSE frame be queued before replacing the subscription.
+            delay(100)
+            subscribeInviteDm()
+        }
+    }
+
+    private fun subscribeInviteDm() {
+        val invite = InviteCodeManager.getLiveInvite(application) ?: return
+        subscriptions.subscribeGiftWraps(
+            pubkey = invite.publicKeyHex,
+            sinceMs = System.currentTimeMillis() - 172_800_000L,
+            id = "invite-messages",
+            handler = { event ->
+                eventProcessor.onInviteRequest(event, invite)
+            }
+        )
     }
 
     private fun observeSelectedChannel() {

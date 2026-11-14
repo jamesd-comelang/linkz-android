@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
 import com.bitchat.android.geohash.DEFAULT_LIVE_LOCATION_ENABLED
+import com.bitchat.android.nostr.FriendRequest
 import com.google.gson.Gson
 import kotlin.random.Random
 
@@ -235,6 +236,22 @@ class DataManager(private val context: Context) {
     fun saveFavorites() {
         prefs.edit().putStringSet("favorites", _favoritePeers).apply()
         Log.d(TAG, "Saved ${_favoritePeers.size} favorite users to storage: $_favoritePeers")
+    }
+
+    // MARK: - One-time invite friend requests (New Friends inbox)
+
+    /** Persisted friend requests, newest last. Expired is derived at read time, never stored. */
+    fun loadFriendRequests(): List<FriendRequest> {
+        val json = prefs.getString("friend_requests", null) ?: return emptyList()
+        return try {
+            gson.fromJson(json, Array<FriendRequest>::class.java)?.toList() ?: emptyList()
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    fun saveFriendRequests(requests: List<FriendRequest>) {
+        prefs.edit().putString("friend_requests", gson.toJson(requests)).apply()
     }
     
     fun addFavorite(fingerprint: String) {

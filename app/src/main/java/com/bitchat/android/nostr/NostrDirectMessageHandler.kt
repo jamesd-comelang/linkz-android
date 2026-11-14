@@ -11,6 +11,7 @@ import com.bitchat.android.model.NoisePayload
 import com.bitchat.android.model.NoisePayloadType
 import com.bitchat.android.model.PrivateMessagePacket
 import com.bitchat.android.protocol.BitchatPacket
+import com.bitchat.android.services.AppStateStore
 import com.bitchat.android.services.ContactDirectory
 import com.bitchat.android.services.ContactIdentityResolver
 import com.bitchat.android.services.SeenMessageStore
@@ -75,6 +76,12 @@ class NostrDirectMessageHandler(
                 // If sender is blocked for geohash contexts, drop any events from this pubkey
                 // Applies to both geohash DMs (geohash != "") and account DMs (geohash == "")
                 if (dataManager.isGeohashUserBlocked(senderPubkey)) return@launch
+                // Friend-request acceptance: a plain rumor, not a bitchat1: packet.
+                // It arrives on the main identity (the request was sent to our real npub).
+                if (content.startsWith(FriendRequestProtocol.ACCEPT_PREFIX)) {
+                    handleFriendAccept(content, senderPubkey)
+                    return@launch
+                }
                 if (!content.startsWith("bitchat1:")) return@launch
 
                 val base64Content = content.removePrefix("bitchat1:")
@@ -113,6 +120,119 @@ class NostrDirectMessageHandler(
             } catch (e: Exception) {
                 Log.e(TAG, "onGiftWrap error: ${e.message}")
             }
+        }
+    }
+
+    /**
+     * Gift wrap addressed to a live one-time invite code, decrypted with the
+     * invite identity. Only a friend request is ever valid here: anything
+     * else (including a plain DM) is dropped, so the invite npub can never
+     * become a DM channel.
+     */
+    fun onInviteGiftWrap(giftWrap: NostrEvent, identity: NostrIdentity) {
+        scope.launch {
+            try {
+                if (dedupe(giftWrap.id)) return@launch
+
+                val messageAge = System.currentTimeMillis() / 1000 - giftWrap.createdAt
+                if (messageAge > 173700) return@launch // 48 hours + 15 mins, same as DMs
+
+                val decryptResult = NostrProtocol.decryptPrivateMessage(giftWrap, identity)
+                if (decryptResult == null) return@launch
+
+                val (content, rawSenderPubkey, _) = decryptResult
+                val senderPubkey = rawSenderPubkey.lowercase()
+
+                if (dataManager.isGeohashUserBlocked(senderPubkey)) return@launch
+
+                val payload = FriendRequestProtocol.decodeRequest(content) ?: return@launch
+                // The rumor's sender must match the request's claimed identity.
+                if (payload.fromPubkeyHex.lowercase() != senderPubkey) return@launch
+                if (payload.fromNoiseKeyHex.isBlank()) return@launch
+
+                recordIncomingRequest(payload)
+            } catch (e: Exception) {
+                Log.e(TAG, "onInviteGiftWrap error: ${e.message}")
+            }
+        }
+    }
+
+    private fun recordIncomingRequest(payload: FriendRequestPayload) {
+        val current = AppStateStore.friendRequests.value
+        // One pending row per person: a re-sent request replaces the old one.
+        val withoutSameSender = current.filterNot {
+            it.direction == FriendRequestDirection.INCOMING &&
+                it.remotePubkeyHex.equals(payload.fromPubkeyHex, ignoreCase = true) &&
+                it.status == FriendRequestStatus.PENDING
+        }
+        val request = FriendRequest(
+            requestId = payload.requestId,
+            remotePubkeyHex = payload.fromPubkeyHex.lowercase(),
+            remoteNickname = payload.fromNickname,
+            remoteNoiseKeyHex = payload.fromNoiseKeyHex.lowercase(),
+            greeting = payload.greeting,
+            createdAtMs = payload.createdAtMs,
+            direction = FriendRequestDirection.INCOMING,
+            status = FriendRequestStatus.PENDING
+        )
+        val updated = withoutSameSender + request
+        AppStateStore.setFriendRequests(updated)
+        dataManager.saveFriendRequests(updated)
+        // Single-use: the invite dies the moment its first valid request lands.
+        InviteCodeManager.consumeInvite(application.applicationContext)
+        NostrBackgroundRuntime.refreshInviteSubscription()
+        Log.d(TAG, "Recorded friend request from ${payload.fromNickname} (${payload.fromPubkeyHex.take(16)}...)")
+    }
+
+    private suspend fun handleFriendAccept(content: String, senderPubkey: String) {
+        val payload = FriendRequestProtocol.decodeAccept(content) ?: return
+        if (payload.fromPubkeyHex.lowercase() != senderPubkey) return
+        val noiseKeyBytes = ContactIdentityResolver.bytesFromHex(payload.fromNoiseKeyHex) ?: return
+
+        val current = AppStateStore.friendRequests.value
+        // Match by requestId only: the outgoing row stores the invite npub,
+        // the accept carries the accepter's real npub, so they differ.
+        val match = current.firstOrNull {
+            it.direction == FriendRequestDirection.OUTGOING &&
+                it.requestId == payload.requestId &&
+                it.status == FriendRequestStatus.PENDING
+        } ?: return
+
+        val updated = current.map {
+            if (it.requestId == match.requestId) it.copy(
+                status = FriendRequestStatus.ACCEPTED,
+                remotePubkeyHex = payload.fromPubkeyHex.lowercase(),
+                remoteNickname = payload.fromNickname,
+                remoteNoiseKeyHex = payload.fromNoiseKeyHex.lowercase()
+            ) else it
+        }
+        AppStateStore.setFriendRequests(updated)
+        dataManager.saveFriendRequests(updated)
+
+        // The two sides are now mutual favorites, so the ordinary Nostr DM
+        // path (which requires mutual-favorite status) works from here on.
+        FavoritesPersistenceService.shared.updateFavoriteStatus(noiseKeyBytes, payload.fromNickname, true)
+        FavoritesPersistenceService.shared.updatePeerFavoritedUs(noiseKeyBytes, true)
+        FavoritesPersistenceService.shared.updateNostrPublicKey(noiseKeyBytes, payload.fromPubkeyHex.lowercase())
+
+        val conversationID = ContactDirectory.canonicalConversationId(
+            ContactIdentityResolver.contactConversationIdForNoiseKey(noiseKeyBytes)
+        )
+        val displayName = payload.fromNickname.takeIf { it.isNotBlank() } ?: "Unknown"
+        val systemMessage = BitchatMessage(
+            sender = "system",
+            content = "$displayName accepted your friend request. You can chat now.",
+            timestamp = Date(),
+            isRelay = false,
+            isPrivate = true,
+            senderPeerID = conversationID
+        )
+        withContext(Dispatchers.Main) {
+            privateChatManager.handleIncomingPrivateMessageDurably(
+                message = systemMessage,
+                suppressUnread = true,
+                origin = PrivateMessageOrigin.NOSTR
+            )
         }
     }
 

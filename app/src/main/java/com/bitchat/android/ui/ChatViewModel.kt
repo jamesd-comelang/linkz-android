@@ -24,9 +24,20 @@ import com.bitchat.android.mesh.MeshService
 import com.bitchat.android.service.MeshServiceHolder
 import com.bitchat.android.model.BitchatMessage
 import com.bitchat.android.model.BitchatMessageType
+import com.bitchat.android.nostr.FriendAcceptPayload
+import com.bitchat.android.nostr.FriendRequest
+import com.bitchat.android.nostr.FriendRequestDirection
+import com.bitchat.android.nostr.FriendRequestPayload
+import com.bitchat.android.nostr.FriendRequestProtocol
+import com.bitchat.android.nostr.FriendRequestStatus
+import com.bitchat.android.nostr.InviteCodeManager
+import com.bitchat.android.nostr.NostrBackgroundRuntime
+import com.bitchat.android.nostr.NostrIdentity
 import com.bitchat.android.nostr.NostrIdentityBridge
+import com.bitchat.android.nostr.NostrTransport
 import com.bitchat.android.nostr.GeohashConversationRegistry
 import com.bitchat.android.protocol.BitchatPacket
+import com.bitchat.android.services.AppStateStore
 
 
 import kotlinx.coroutines.launch
@@ -437,6 +448,9 @@ class ChatViewModel(
         com.bitchat.android.services.AppStateStore.reloadConversationPersistence(
             getApplication()
         )
+        // Friend requests (New Friends inbox) persist in DataManager; hydrate
+        // the process store so the background processor and the UI share one list.
+        com.bitchat.android.services.AppStateStore.setFriendRequests(dataManager.loadFriendRequests())
         // Mark queued private messages as failed when the router gives up on them
         try {
             com.bitchat.android.services.MessageRouter.getInstance(getApplication(), mesh).onMessageExpired = { messageID ->
@@ -1173,6 +1187,186 @@ class ChatViewModel(
     fun setProfileStatus(status: String) {
         dataManager.setProfileStatus(status)
         _profileTick.value += 1
+    }
+
+    // MARK: - One-time invite friend requests (New Friends inbox)
+
+    /** Process-wide request list, written by the background Nostr processor on arrival and by the UI below. */
+    val friendRequests: StateFlow<List<FriendRequest>> = AppStateStore.friendRequests
+
+    private val _inviteTick = MutableStateFlow(0)
+    val inviteTick: StateFlow<Int> = _inviteTick.asStateFlow()
+
+    /** Live invite code, or null when there is none, it was used, or it expired. */
+    fun getInviteStatus(): InviteCodeManager.InviteStatus =
+        InviteCodeManager.status(getApplication())
+
+    /** Live invite, generating a fresh one when the old one is dead. */
+    fun getOrCreateInviteCode(): NostrIdentity {
+        val existing = InviteCodeManager.getLiveInvite(getApplication())
+        if (existing != null) return existing
+        val created = InviteCodeManager.regenerateInvite(getApplication())
+        NostrBackgroundRuntime.refreshInviteSubscription()
+        _inviteTick.value += 1
+        return created
+    }
+
+    /** New keypair; the previous code stops working immediately. */
+    fun regenerateInviteCode(): NostrIdentity {
+        val created = InviteCodeManager.regenerateInvite(getApplication())
+        NostrBackgroundRuntime.refreshInviteSubscription()
+        _inviteTick.value += 1
+        return created
+    }
+
+    /** Invite code prefilled by scanning a QR code (VerificationSheet) or pasting. */
+    private val _pendingInviteNpub = MutableStateFlow<String?>(null)
+    val pendingInviteNpub: StateFlow<String?> = _pendingInviteNpub.asStateFlow()
+
+    fun onInviteCodeScanned(invitePubkeyHex: String) {
+        _pendingInviteNpub.value = invitePubkeyHex
+    }
+
+    fun clearPendingInviteNpub() {
+        _pendingInviteNpub.value = null
+    }
+
+    enum class SendFriendRequestResult { SENT, INVALID_CODE, SELF_CODE, NO_IDENTITY }
+
+    /**
+     * Send a friend request to a one-time invite code. The invite npub can
+     * carry only a request — it never becomes a DM channel — and the code
+     * dies after this one request or 3 days, whichever comes first.
+     */
+    fun sendFriendRequest(inviteCodeText: String, greeting: String): SendFriendRequestResult {
+        val inviteHex = InviteCodeManager.parseInviteCode(inviteCodeText)
+            ?: return SendFriendRequestResult.INVALID_CODE
+        val myIdentity = try {
+            NostrIdentityBridge.getCurrentNostrIdentity(getApplication())
+        } catch (_: Exception) {
+            null
+        } ?: return SendFriendRequestResult.NO_IDENTITY
+        if (inviteHex.equals(myIdentity.publicKeyHex, ignoreCase = true)) {
+            return SendFriendRequestResult.SELF_CODE
+        }
+        val myNoiseKeyHex = try {
+            mesh.getStaticNoisePublicKey()?.let { ContactIdentityResolver.noiseKeyHex(it) }
+        } catch (_: Exception) {
+            null
+        } ?: return SendFriendRequestResult.NO_IDENTITY
+        val requestId = java.util.UUID.randomUUID().toString()
+        val payload = FriendRequestPayload(
+            requestId = requestId,
+            fromPubkeyHex = myIdentity.publicKeyHex.lowercase(),
+            fromNickname = state.getNicknameValue().orEmpty(),
+            fromNoiseKeyHex = myNoiseKeyHex.lowercase(),
+            greeting = greeting.trim(),
+            createdAtMs = System.currentTimeMillis()
+        )
+        NostrTransport.getInstance(getApplication()).sendFriendRequest(
+            inviteHex,
+            FriendRequestProtocol.encodeRequest(payload)
+        )
+        // Record the outgoing request so the accept can be matched by requestId.
+        // remotePubkeyHex is the invite npub here; the accept carries the
+        // accepter's real npub and replaces it.
+        val updated = AppStateStore.friendRequests.value + FriendRequest(
+            requestId = requestId,
+            remotePubkeyHex = inviteHex.lowercase(),
+            remoteNickname = "",
+            remoteNoiseKeyHex = "",
+            greeting = greeting.trim(),
+            createdAtMs = payload.createdAtMs,
+            direction = FriendRequestDirection.OUTGOING,
+            status = FriendRequestStatus.PENDING
+        )
+        AppStateStore.setFriendRequests(updated)
+        dataManager.saveFriendRequests(updated)
+        return SendFriendRequestResult.SENT
+    }
+
+    /** Accept an incoming request: mutual favorite both ways, then tell the requester. */
+    fun acceptFriendRequest(requestId: String) {
+        val current = AppStateStore.friendRequests.value
+        val match = current.firstOrNull {
+            it.requestId == requestId &&
+                it.direction == FriendRequestDirection.INCOMING &&
+                it.status == FriendRequestStatus.PENDING
+        } ?: return
+        val myIdentity = try {
+            NostrIdentityBridge.getCurrentNostrIdentity(getApplication())
+        } catch (_: Exception) {
+            null
+        } ?: return
+        val myNoiseKeyHex = try {
+            mesh.getStaticNoisePublicKey()?.let { ContactIdentityResolver.noiseKeyHex(it) }
+        } catch (_: Exception) {
+            null
+        } ?: return
+        val noiseKeyBytes = ContactIdentityResolver.bytesFromHex(match.remoteNoiseKeyHex) ?: return
+        // The two sides are now mutual favorites, so the ordinary Nostr DM
+        // path (which requires mutual-favorite status) works from here on.
+        FavoritesPersistenceService.shared.updateFavoriteStatus(noiseKeyBytes, match.remoteNickname, true)
+        FavoritesPersistenceService.shared.updatePeerFavoritedUs(noiseKeyBytes, true)
+        FavoritesPersistenceService.shared.updateNostrPublicKey(noiseKeyBytes, match.remotePubkeyHex.lowercase())
+        val accept = FriendAcceptPayload(
+            requestId = requestId,
+            fromPubkeyHex = myIdentity.publicKeyHex.lowercase(),
+            fromNickname = state.getNicknameValue().orEmpty(),
+            fromNoiseKeyHex = myNoiseKeyHex.lowercase(),
+            createdAtMs = System.currentTimeMillis()
+        )
+        NostrTransport.getInstance(getApplication()).sendFriendAccept(
+            match.remotePubkeyHex,
+            FriendRequestProtocol.encodeAccept(accept)
+        )
+        val updated = current.map {
+            if (it.requestId == requestId) it.copy(status = FriendRequestStatus.ACCEPTED) else it
+        }
+        AppStateStore.setFriendRequests(updated)
+        dataManager.saveFriendRequests(updated)
+        // A system message creates the DM conversation row.
+        val conversationID = ContactDirectory.canonicalConversationId(
+            ContactIdentityResolver.contactConversationIdForNoiseKey(noiseKeyBytes)
+        )
+        val displayName = match.remoteNickname.takeIf { it.isNotBlank() } ?: "Unknown"
+        val systemMessage = BitchatMessage(
+            sender = "system",
+            content = "You accepted $displayName's friend request. You can chat now.",
+            timestamp = Date(),
+            isRelay = false,
+            isPrivate = true,
+            senderPeerID = conversationID
+        )
+        viewModelScope.launch {
+            withContext(Dispatchers.Main) {
+                privateChatManager.handleIncomingPrivateMessageDurably(
+                    message = systemMessage,
+                    suppressUnread = true,
+                    origin = PrivateMessageOrigin.NOSTR
+                )
+            }
+        }
+    }
+
+    /** Decline is local only — WeChat sends no notification when a request is ignored. */
+    fun declineFriendRequest(requestId: String) {
+        val current = AppStateStore.friendRequests.value
+        if (current.none { it.requestId == requestId && it.status == FriendRequestStatus.PENDING }) return
+        val updated = current.map {
+            if (it.requestId == requestId) it.copy(status = FriendRequestStatus.DECLINED) else it
+        }
+        AppStateStore.setFriendRequests(updated)
+        dataManager.saveFriendRequests(updated)
+    }
+
+    /** Open the DM with an accepted friend request. */
+    fun openFriendChat(request: FriendRequest) {
+        val noiseKeyBytes = ContactIdentityResolver.bytesFromHex(request.remoteNoiseKeyHex) ?: return
+        val conversationID = ContactDirectory.canonicalConversationId(
+            ContactIdentityResolver.contactConversationIdForNoiseKey(noiseKeyBytes)
+        )
+        showPrivateChatSheet(conversationID)
     }
 
     fun setAvatarFromUri(uri: android.net.Uri): Boolean =

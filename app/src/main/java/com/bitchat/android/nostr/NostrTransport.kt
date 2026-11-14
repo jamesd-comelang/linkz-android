@@ -114,6 +114,61 @@ class NostrTransport(
         }
     }
     
+    /**
+     * Send a one-time invite friend request: a gift wrap to the invite npub
+     * whose rumor is a plain "linkz-friend-request:{json}" line. No Noise
+     * session exists with a stranger, so the request does not ride the
+     * bitchat1: packet path — the gift wrap itself authenticates the sender.
+     */
+    fun sendFriendRequest(invitePubkeyHex: String, requestContent: String) {
+        transportScope.launch {
+            try {
+                val senderIdentity = NostrIdentityBridge.getCurrentNostrIdentity(context) ?: run {
+                    Log.e(TAG, "No Nostr identity available")
+                    return@launch
+                }
+                val giftWraps = NostrProtocol.createPrivateMessage(
+                    content = requestContent,
+                    recipientPubkey = invitePubkeyHex,
+                    senderIdentity = senderIdentity
+                )
+                giftWraps.forEach { event ->
+                    NostrRelayManager.registerPendingGiftWrap(event.id)
+                    NostrRelayManager.getInstance(context).sendEvent(event)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to send friend request via Nostr: ${e.message}")
+            }
+        }
+    }
+
+    /**
+     * Send a friend-request acceptance to the requester's real npub.
+     * Same shape as [sendFriendRequest]: a gift wrap carrying a plain
+     * "linkz-friend-accept:{json}" rumor.
+     */
+    fun sendFriendAccept(requesterPubkeyHex: String, acceptContent: String) {
+        transportScope.launch {
+            try {
+                val senderIdentity = NostrIdentityBridge.getCurrentNostrIdentity(context) ?: run {
+                    Log.e(TAG, "No Nostr identity available")
+                    return@launch
+                }
+                val giftWraps = NostrProtocol.createPrivateMessage(
+                    content = acceptContent,
+                    recipientPubkey = requesterPubkeyHex,
+                    senderIdentity = senderIdentity
+                )
+                giftWraps.forEach { event ->
+                    NostrRelayManager.registerPendingGiftWrap(event.id)
+                    NostrRelayManager.getInstance(context).sendEvent(event)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to send friend accept via Nostr: ${e.message}")
+            }
+        }
+    }
+
     fun sendReadReceipt(receipt: ReadReceipt, to: String) {
         // Enqueue and process with throttling to avoid relay rate limits
         readQueue.offer(QueuedRead(receipt, to))

@@ -82,6 +82,11 @@ internal class NostrBackgroundEventProcessor(
         directMessageHandler.onGiftWrap(event, "", identity)
     }
 
+    fun onInviteRequest(event: NostrEvent, identity: NostrIdentity) {
+        refreshBlockLists()
+        directMessageHandler.onInviteGiftWrap(event, identity)
+    }
+
     fun onGeohashMessage(event: NostrEvent, geohash: String) {
         refreshBlockLists()
         geohashMessageHandler.onEvent(event, geohash)

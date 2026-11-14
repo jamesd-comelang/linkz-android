@@ -73,6 +73,7 @@ import com.bitchat.android.R
 import com.bitchat.android.core.ui.component.button.CloseButton
 import com.bitchat.android.core.ui.component.sheet.LocalSheetDismiss
 import com.bitchat.android.core.ui.component.sheet.BitchatBottomSheet
+import com.bitchat.android.nostr.InviteCodeManager
 import com.bitchat.android.services.VerificationService
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
@@ -179,6 +180,14 @@ fun VerificationSheet(
                             val qr = VerificationService.verifyScannedQR(code)
                             if (qr != null && viewModel.beginQRVerification(qr)) {
                                 selectedTab = 0
+                            } else {
+                                // An invite-code QR (a bare npub) opens the
+                                // friend-request dialog instead of verification.
+                                val inviteHex = InviteCodeManager.parseInviteCode(code)
+                                if (inviteHex != null) {
+                                    viewModel.onInviteCodeScanned(inviteHex)
+                                    viewModel.hideVerificationSheet()
+                                }
                             }
                         }
                     )

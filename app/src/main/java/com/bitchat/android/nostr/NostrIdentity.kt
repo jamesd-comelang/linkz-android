@@ -211,16 +211,20 @@ object NostrIdentityBridge {
         
         // Clear cache first
         geohashIdentityCache.clear()
-        
+
+        // The one-time invite key is Nostr identity data too: a wiped phone
+        // must not keep a live invite code.
+        val inviteCleared = InviteCodeManager.clearInvite(context)
+
         // Clear Nostr private key using public methods instead of reflection
         return try {
             val cleared = stateManager.clearSecureValuesSynchronously(NOSTR_PRIVATE_KEY, DEVICE_SEED_KEY)
-            if (cleared) {
+            if (cleared && inviteCleared) {
                 Log.i(TAG, "Cleared all Nostr identity data and cache")
             } else {
                 Log.e(TAG, "Nostr identity wipe could not be committed")
             }
-            cleared
+            cleared && inviteCleared
         } catch (e: Exception) {
             Log.e(TAG, "Failed to clear Nostr data: ${e.message}")
             false

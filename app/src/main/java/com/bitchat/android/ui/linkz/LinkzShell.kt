@@ -63,6 +63,8 @@ import kotlinx.coroutines.launch
 import com.bitchat.android.geohash.ChannelID
 import com.bitchat.android.ui.AboutSheet
 import com.bitchat.android.ui.ChatScreen
+import com.bitchat.android.nostr.FriendRequestDirection
+import com.bitchat.android.nostr.FriendRequestStatus
 import com.bitchat.android.ui.ChatViewModel
 import com.bitchat.android.ui.LocationChannelsSheet
 import com.bitchat.android.ui.MeshPeerListSheet
@@ -117,6 +119,8 @@ fun LinkzShell(viewModel: ChatViewModel) {
     var showPanicDialog by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var showProfile by remember { mutableStateOf(false) }
+    var showInviteCode by remember { mutableStateOf(false) }
+    var showNewFriends by remember { mutableStateOf(false) }
 
     val inTimeline = currentChannel != null ||
         selectedLocationChannel is ChannelID.Location ||
@@ -148,7 +152,20 @@ fun LinkzShell(viewModel: ChatViewModel) {
         LinkzProfileScreen(
             viewModel = viewModel,
             nickname = nickname,
-            onBack = { showProfile = false }
+            onBack = { showProfile = false },
+            onShowInviteCode = { showInviteCode = true }
+        )
+    } else if (showInviteCode) {
+        BackHandler { showInviteCode = false }
+        LinkzInviteCodeScreen(
+            viewModel = viewModel,
+            onBack = { showInviteCode = false }
+        )
+    } else if (showNewFriends) {
+        BackHandler { showNewFriends = false }
+        LinkzNewFriendsScreen(
+            viewModel = viewModel,
+            onBack = { showNewFriends = false }
         )
     } else if (showSettings) {
         BackHandler { showSettings = false }
@@ -191,7 +208,9 @@ fun LinkzShell(viewModel: ChatViewModel) {
                         remarksTick = remarksTick,
                         privateChats = privateChats,
                         totalUnread = totalUnread,
-                        onOpenMeshTimeline = { showMeshTimeline = true }
+                        onOpenMeshTimeline = { showMeshTimeline = true },
+                        onShowInviteCode = { showInviteCode = true },
+                        onShowNewFriends = { showNewFriends = true }
                     )
                     LinkzTab.CONTACTS -> LinkzContactsTab(
                         viewModel = viewModel,
@@ -200,7 +219,9 @@ fun LinkzShell(viewModel: ChatViewModel) {
                         favoritePeers = favoritePeers,
                         peerFingerprints = peerFingerprints,
                         conversations = conversations,
-                        remarksTick = remarksTick
+                        remarksTick = remarksTick,
+                        onShowInviteCode = { showInviteCode = true },
+                        onShowNewFriends = { showNewFriends = true }
                     )
                     LinkzTab.DISCOVER -> LinkzDiscoverTab(
                         viewModel = viewModel,
@@ -242,6 +263,18 @@ fun LinkzShell(viewModel: ChatViewModel) {
             isPresented = true,
             onDismiss = viewModel::hideVerificationSheet,
             viewModel = viewModel
+        )
+    }
+    // Scanning an invite-code QR pre-fills the friend-request dialog.
+    val pendingInviteNpub by viewModel.pendingInviteNpub.collectAsStateWithLifecycle()
+    if (pendingInviteNpub != null) {
+        LinkzSendInviteRequestDialog(
+            viewModel = viewModel,
+            prefilledNpub = pendingInviteNpub?.let {
+                com.bitchat.android.services.ContactIdentityResolver.npubFromHex(it)
+            },
+            onDismiss = { viewModel.clearPendingInviteNpub() },
+            onSent = { showNewFriends = true }
         )
     }
     if (showSecurityVerificationSheet) {
@@ -353,7 +386,9 @@ private fun LinkzChatsTab(
     remarksTick: Int,
     privateChats: Map<String, List<com.bitchat.android.model.BitchatMessage>>,
     totalUnread: Int,
-    onOpenMeshTimeline: () -> Unit
+    onOpenMeshTimeline: () -> Unit,
+    onShowInviteCode: () -> Unit,
+    onShowNewFriends: () -> Unit
 ) {
     var query by remember { mutableStateOf("") }
     var showSearch by remember { mutableStateOf(false) }
@@ -365,6 +400,7 @@ private fun LinkzChatsTab(
     var showAddByIdDialog by remember { mutableStateOf(false) }
     var addByIdInput by remember { mutableStateOf("") }
     var addByIdNote by remember { mutableStateOf<String?>(null) }
+    var showAddByInviteDialog by remember { mutableStateOf(false) }
     // Same people list as the Contacts tab: nearby peers plus past
     // conversations, deduped, blocked peers left out. Powers both the
     // New Chat picker and Add by ID matching.
@@ -633,6 +669,20 @@ private fun LinkzChatsTab(
                                 showAddByIdDialog = true
                             }
                         )
+                        LinkzMenuRow(
+                            title = "Share Invite Code",
+                            onClick = {
+                                showAddContactsSheet = false
+                                onShowInviteCode()
+                            }
+                        )
+                        LinkzMenuRow(
+                            title = "Add by Invite Code",
+                            onClick = {
+                                showAddContactsSheet = false
+                                showAddByInviteDialog = true
+                            }
+                        )
                     }
                 },
                 confirmButton = {},
@@ -688,7 +738,8 @@ private fun LinkzChatsTab(
                                 )
                             } else {
                                 addByIdNote = "No nearby peer matches that ID. " +
-                                    "Ask them to share their QR code."
+                                    "Add by ID only finds people nearby over Bluetooth. " +
+                                    "To add someone over the internet, use an invite code instead."
                             }
                         }
                     ) {
@@ -700,6 +751,14 @@ private fun LinkzChatsTab(
                         Text(text = "Cancel")
                     }
                 }
+            )
+        }
+        if (showAddByInviteDialog) {
+            LinkzSendInviteRequestDialog(
+                viewModel = viewModel,
+                prefilledNpub = null,
+                onDismiss = { showAddByInviteDialog = false },
+                onSent = { onShowNewFriends() }
             )
         }
         if (showSearch) {
@@ -856,7 +915,9 @@ private fun LinkzContactsTab(
     favoritePeers: Set<String>,
     peerFingerprints: Map<String, String>,
     conversations: List<com.bitchat.android.ui.ConversationSummary>,
-    remarksTick: Int
+    remarksTick: Int,
+    onShowInviteCode: () -> Unit,
+    onShowNewFriends: () -> Unit
 ) {
     var query by remember { mutableStateOf("") }
     var showSearch by remember { mutableStateOf(false) }
@@ -865,6 +926,12 @@ private fun LinkzContactsTab(
     var showAddByIdDialog by remember { mutableStateOf(false) }
     var addByIdInput by remember { mutableStateOf("") }
     var addByIdNote by remember { mutableStateOf<String?>(null) }
+    var showAddByInviteDialog by remember { mutableStateOf(false) }
+    val friendRequests by viewModel.friendRequests.collectAsStateWithLifecycle()
+    val pendingRequestCount = friendRequests.count {
+        it.direction == FriendRequestDirection.INCOMING &&
+            it.status == FriendRequestStatus.PENDING && !it.isExpired()
+    }
     // Block state is not a StateFlow, so bump this after a block/unblock
     // to recompute the list below.
     var blockTick by remember { mutableStateOf(0) }
@@ -955,6 +1022,20 @@ private fun LinkzContactsTab(
                     showAddByIdDialog = true
                 }
             )
+            DropdownMenuItem(
+                text = { Text(text = "Share Invite Code") },
+                onClick = {
+                    showAddMenu = false
+                    onShowInviteCode()
+                }
+            )
+            DropdownMenuItem(
+                text = { Text(text = "Add by Invite Code") },
+                onClick = {
+                    showAddMenu = false
+                    showAddByInviteDialog = true
+                }
+            )
         }
         if (showAddByIdDialog) {
             AlertDialog(
@@ -1000,7 +1081,8 @@ private fun LinkzContactsTab(
                                 selectedContactId = match.id
                             } else {
                                 addByIdNote = "No nearby peer matches that ID. " +
-                                    "Ask them to share their QR code."
+                                    "Add by ID only finds people nearby over Bluetooth. " +
+                                    "To add someone over the internet, use an invite code instead."
                             }
                         }
                     ) {
@@ -1014,10 +1096,28 @@ private fun LinkzContactsTab(
                 }
             )
         }
+        if (showAddByInviteDialog) {
+            LinkzSendInviteRequestDialog(
+                viewModel = viewModel,
+                prefilledNpub = null,
+                onDismiss = { showAddByInviteDialog = false },
+                onSent = { onShowNewFriends() }
+            )
+        }
         if (showSearch) {
             LinkzSearchField(query = query, onQueryChange = { query = it })
         }
         LazyColumn(modifier = Modifier.fillMaxSize()) {
+            item {
+                LinkzChatRow(
+                    name = "New Friends",
+                    preview = if (pendingRequestCount > 0) "$pendingRequestCount waiting" else "Friend requests",
+                    timeLabel = "",
+                    unreadCount = pendingRequestCount,
+                    avatarColor = linkzAvatarColor("new-friends"),
+                    onClick = onShowNewFriends
+                )
+            }
             if (favorites.isNotEmpty()) {
                 item { LinkzSectionHeader(text = "Favorites") }
                 items(favorites, key = { it.id.lowercase() }) { contact ->

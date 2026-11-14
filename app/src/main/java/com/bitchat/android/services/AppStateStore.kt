@@ -3,6 +3,7 @@ package com.bitchat.android.services
 import android.content.Context
 import com.bitchat.android.model.BitchatMessage
 import com.bitchat.android.model.DeliveryStatus
+import com.bitchat.android.nostr.FriendRequest
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -48,6 +49,16 @@ object AppStateStore {
         MutableStateFlow<Map<String, String>>(emptyMap())
     val privateConversationDisplayNames: StateFlow<Map<String, String>> =
         _privateConversationDisplayNames.asStateFlow()
+
+    // One-time invite friend requests (New Friends inbox). Written by the
+    // background Nostr processor on arrival and by the UI on accept/decline;
+    // persisted to DataManager by whoever writes.
+    private val _friendRequests = MutableStateFlow<List<FriendRequest>>(emptyList())
+    val friendRequests: StateFlow<List<FriendRequest>> = _friendRequests.asStateFlow()
+
+    fun setFriendRequests(requests: List<FriendRequest>) {
+        _friendRequests.value = requests
+    }
 
     @Volatile
     private var conversationRepository: ConversationRepository? = null
@@ -941,6 +952,7 @@ object AppStateStore {
             _readPrivateMessageIDs.value = emptySet()
             _unreadPrivateMessageCounts.value = emptyMap()
             _privateConversationDisplayNames.value = emptyMap()
+            _friendRequests.value = emptyList()
             _channelMessages.value = emptyMap()
             _nickname.value = ""
             _selectedPrivateChatPeer.value = null
