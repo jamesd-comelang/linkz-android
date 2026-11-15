@@ -129,7 +129,7 @@ fun LinkzInviteCodeScreen(viewModel: ChatViewModel, onBack: () -> Unit) {
             }
             Spacer(modifier = Modifier.height(24.dp))
             Text(
-                text = "Anyone with this code can send you one friend request — nothing else. " +
+                text = "Anyone with this code can add you — nothing else. " +
                     "The code stops working after one request or 3 days. " +
                     "Share it as a QR code or copy the text.",
                 style = MaterialTheme.typography.bodyMedium,
@@ -168,7 +168,7 @@ fun LinkzSendInviteRequestDialog(
             Column {
                 Text(
                     text = "Paste the invite code (npub) someone shared with you. " +
-                        "It can only send them a friend request. Use the code from " +
+                        "It can only be used to add them, not to message them. Use the code from " +
                         "their My Invite Code screen, not their QR code.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant

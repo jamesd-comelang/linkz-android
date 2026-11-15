@@ -58,7 +58,7 @@ fun LinkzNewFriendsScreen(viewModel: ChatViewModel, onBack: () -> Unit) {
         LinkzTopBar(title = "New Friends", onBackClick = onBack)
         if (sorted.isEmpty()) {
             Text(
-                text = "No friend requests yet. Share your invite code to let " +
+                text = "No new friends yet. Share your invite code to let " +
                     "someone add you, or paste theirs to add them.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,

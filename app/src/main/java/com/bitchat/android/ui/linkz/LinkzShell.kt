@@ -1111,7 +1111,7 @@ private fun LinkzContactsTab(
             item {
                 LinkzChatRow(
                     name = "New Friends",
-                    preview = if (pendingRequestCount > 0) "$pendingRequestCount waiting" else "Friend requests",
+                    preview = if (pendingRequestCount > 0) "$pendingRequestCount waiting" else "",
                     timeLabel = "",
                     unreadCount = pendingRequestCount,
                     avatarColor = linkzAvatarColor("new-friends"),

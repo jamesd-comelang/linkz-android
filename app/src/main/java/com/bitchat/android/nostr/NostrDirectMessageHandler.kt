@@ -250,7 +250,7 @@ class NostrDirectMessageHandler(
         val displayName = payload.fromNickname.takeIf { it.isNotBlank() } ?: "Unknown"
         val systemMessage = BitchatMessage(
             sender = "system",
-            content = "$displayName accepted your friend request. You can chat now.",
+            content = "$displayName accepted. You can chat now.",
             timestamp = Date(),
             isRelay = false,
             isPrivate = true,

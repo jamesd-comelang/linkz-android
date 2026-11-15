@@ -1332,7 +1332,7 @@ class ChatViewModel(
         val displayName = match.remoteNickname.takeIf { it.isNotBlank() } ?: "Unknown"
         val systemMessage = BitchatMessage(
             sender = "system",
-            content = "You accepted $displayName's friend request. You can chat now.",
+            content = "You accepted $displayName. You can chat now.",
             timestamp = Date(),
             isRelay = false,
             isPrivate = true,
