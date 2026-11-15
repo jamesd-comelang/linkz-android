@@ -82,6 +82,14 @@ class NostrDirectMessageHandler(
                     handleFriendAccept(content, senderPubkey)
                     return@launch
                 }
+                // Friend request sent to our main npub instead of the one-time
+                // invite code: the sender pasted our QR code, not the invite
+                // code. Take it into New Friends the same way — but it did not
+                // use the invite, so it must not consume it.
+                if (content.startsWith(FriendRequestProtocol.REQUEST_PREFIX)) {
+                    handleFriendRequestAtMainIdentity(content, senderPubkey)
+                    return@launch
+                }
                 if (!content.startsWith("bitchat1:")) return@launch
 
                 val base64Content = content.removePrefix("bitchat1:")
@@ -157,7 +165,10 @@ class NostrDirectMessageHandler(
         }
     }
 
-    private fun recordIncomingRequest(payload: FriendRequestPayload) {
+    private fun recordIncomingRequest(
+        payload: FriendRequestPayload,
+        consumeInvite: Boolean = true
+    ) {
         val current = AppStateStore.friendRequests.value
         // One pending row per person: a re-sent request replaces the old one.
         val withoutSameSender = current.filterNot {
@@ -179,9 +190,27 @@ class NostrDirectMessageHandler(
         AppStateStore.setFriendRequests(updated)
         dataManager.saveFriendRequests(updated)
         // Single-use: the invite dies the moment its first valid request lands.
-        InviteCodeManager.consumeInvite(application.applicationContext)
-        NostrBackgroundRuntime.refreshInviteSubscription()
+        // A request that arrived at the main npub did not use the invite,
+        // so it must not kill it.
+        if (consumeInvite) {
+            InviteCodeManager.consumeInvite(application.applicationContext)
+            NostrBackgroundRuntime.refreshInviteSubscription()
+        }
         Log.d(TAG, "Recorded friend request from ${payload.fromNickname} (${payload.fromPubkeyHex.take(16)}...)")
+    }
+
+    /**
+     * A friend request that arrived at the main identity, i.e. the sender
+     * used our QR code instead of the one-time invite code. Same checks as
+     * the invite path ([onInviteGiftWrap]) — rumor sender must match the
+     * request's claimed identity, Noise key must be present — then the same
+     * New Friends row, without consuming the live invite.
+     */
+    private fun handleFriendRequestAtMainIdentity(content: String, senderPubkey: String) {
+        val payload = FriendRequestProtocol.decodeRequest(content) ?: return
+        if (payload.fromPubkeyHex.lowercase() != senderPubkey) return
+        if (payload.fromNoiseKeyHex.isBlank()) return
+        recordIncomingRequest(payload, consumeInvite = false)
     }
 
     private suspend fun handleFriendAccept(content: String, senderPubkey: String) {

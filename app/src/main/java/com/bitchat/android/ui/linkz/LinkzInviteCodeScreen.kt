@@ -168,7 +168,8 @@ fun LinkzSendInviteRequestDialog(
             Column {
                 Text(
                     text = "Paste the invite code (npub) someone shared with you. " +
-                        "It can only send them a friend request.",
+                        "It can only send them a friend request. Use the code from " +
+                        "their My Invite Code screen, not their QR code.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
