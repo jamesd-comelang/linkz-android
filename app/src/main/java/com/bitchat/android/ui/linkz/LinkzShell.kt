@@ -121,6 +121,7 @@ fun LinkzShell(viewModel: ChatViewModel) {
     var showProfile by remember { mutableStateOf(false) }
     var showInviteCode by remember { mutableStateOf(false) }
     var showNewFriends by remember { mutableStateOf(false) }
+    var showDebugLogs by remember { mutableStateOf(false) }
 
     val inTimeline = currentChannel != null ||
         selectedLocationChannel is ChannelID.Location ||
@@ -153,7 +154,11 @@ fun LinkzShell(viewModel: ChatViewModel) {
             viewModel = viewModel,
             nickname = nickname,
             onBack = { showProfile = false },
-            onShowInviteCode = { showInviteCode = true }
+            // Opening a pushed page from Profile closes Profile too:
+            // the chain below is if/else-if, so leaving showProfile
+            // true would keep rendering Profile instead of the new page.
+            onShowInviteCode = { showProfile = false; showInviteCode = true },
+            onShowDebugLogs = { showProfile = false; showDebugLogs = true }
         )
     } else if (showInviteCode) {
         BackHandler { showInviteCode = false }
@@ -166,6 +171,11 @@ fun LinkzShell(viewModel: ChatViewModel) {
         LinkzNewFriendsScreen(
             viewModel = viewModel,
             onBack = { showNewFriends = false }
+        )
+    } else if (showDebugLogs) {
+        BackHandler { showDebugLogs = false }
+        LinkzDebugLogScreen(
+            onBack = { showDebugLogs = false }
         )
     } else if (showSettings) {
         BackHandler { showSettings = false }

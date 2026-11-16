@@ -57,7 +57,7 @@ import com.bitchat.android.ui.ChatViewModel
  * right. Only rows that mean something in Linkz are kept:
  *
  * - Profile Photo, Name, Gender, Region, ID, My QR Code, My Invite Code,
- *   What's Up.
+ *   What's Up, Debug Logs.
  * - Mobile Number shows "Not Linked": Linkz has no accounts or
  *   phone numbers, so tapping it explains that instead of editing.
  * - Gender, Region, and What's Up are local only, like the photo:
@@ -74,7 +74,8 @@ fun LinkzProfileScreen(
     viewModel: ChatViewModel,
     nickname: String,
     onBack: () -> Unit,
-    onShowInviteCode: () -> Unit = {}
+    onShowInviteCode: () -> Unit = {},
+    onShowDebugLogs: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val profileTick by viewModel.profileTick.collectAsStateWithLifecycle()
@@ -201,7 +202,11 @@ fun LinkzProfileScreen(
                 LinkzProfileRow(
                     title = "What's Up",
                     value = status.ifBlank { "Not Set" },
-                    onClick = { showStatusSheet = true },
+                    onClick = { showStatusSheet = true }
+                )
+                LinkzProfileRow(
+                    title = "Debug Logs",
+                    onClick = onShowDebugLogs,
                     showDivider = false
                 )
             }
