@@ -670,14 +670,14 @@ private fun LinkzChatsTab(
                             }
                         )
                         LinkzMenuRow(
-                            title = "Share Invite Code",
+                            title = "Share Friend Code",
                             onClick = {
                                 showAddContactsSheet = false
                                 onShowInviteCode()
                             }
                         )
                         LinkzMenuRow(
-                            title = "Add by Invite Code",
+                            title = "Add by Friend Code",
                             onClick = {
                                 showAddContactsSheet = false
                                 showAddByInviteDialog = true
@@ -1023,14 +1023,14 @@ private fun LinkzContactsTab(
                 }
             )
             DropdownMenuItem(
-                text = { Text(text = "Share Invite Code") },
+                text = { Text(text = "Share Friend Code") },
                 onClick = {
                     showAddMenu = false
                     onShowInviteCode()
                 }
             )
             DropdownMenuItem(
-                text = { Text(text = "Add by Invite Code") },
+                text = { Text(text = "Add by Friend Code") },
                 onClick = {
                     showAddMenu = false
                     showAddByInviteDialog = true

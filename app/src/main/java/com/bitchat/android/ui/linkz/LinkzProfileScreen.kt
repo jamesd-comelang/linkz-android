@@ -186,13 +186,13 @@ fun LinkzProfileScreen(
                     }
                 )
                 LinkzProfileRow(
-                    title = "My Invite Code",
+                    title = "My Friend Code",
                     value = "One-time",
                     onClick = onShowInviteCode,
                     trailing = {
                         Icon(
                             imageVector = Icons.Outlined.QrCodeScanner,
-                            contentDescription = "Invite code",
+                            contentDescription = "Friend code",
                             modifier = Modifier.size(24.dp),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )

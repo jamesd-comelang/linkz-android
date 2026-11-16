@@ -75,7 +75,7 @@ fun LinkzInviteCodeScreen(viewModel: ChatViewModel, onBack: () -> Unit) {
     val valid = status as? InviteCodeManager.InviteStatus.Valid
 
     Column(modifier = Modifier.fillMaxSize()) {
-        LinkzTopBar(title = "My Invite Code", onBackClick = onBack)
+        LinkzTopBar(title = "My Friend Code", onBackClick = onBack)
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -96,7 +96,7 @@ fun LinkzInviteCodeScreen(viewModel: ChatViewModel, onBack: () -> Unit) {
                         Context.CLIPBOARD_SERVICE
                     ) as ClipboardManager
                     clipboard.setPrimaryClip(
-                        ClipData.newPlainText("Linkz invite code", valid.identity.npub)
+                        ClipData.newPlainText("Linkz friend code", valid.identity.npub)
                     )
                     copied = true
                 }) {
@@ -163,13 +163,13 @@ fun LinkzSendInviteRequestDialog(
     var error by remember { mutableStateOf<String?>(null) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(text = "Add by Invite Code") },
+        title = { Text(text = "Add by Friend Code") },
         text = {
             Column {
                 Text(
-                    text = "Paste the invite code (npub) someone shared with you. " +
+                    text = "Paste the friend code (npub) someone shared with you. " +
                         "It can only be used to add them, not to message them. Use the code from " +
-                        "their My Invite Code screen, not their QR code.",
+                        "their My Friend Code screen, not their QR code.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -208,9 +208,9 @@ fun LinkzSendInviteRequestDialog(
                         onSent()
                     }
                     ChatViewModel.SendFriendRequestResult.INVALID_CODE ->
-                        error = "That doesn't look like an invite code. Paste the full npub."
+                        error = "That doesn't look like a friend code. Paste the full npub."
                     ChatViewModel.SendFriendRequestResult.SELF_CODE ->
-                        error = "That's your own invite code."
+                        error = "That's your own friend code."
                     ChatViewModel.SendFriendRequestResult.NO_IDENTITY ->
                         error = "Couldn't load your identity. Try again."
                 }
@@ -233,7 +233,7 @@ private fun LinkzQRCodeImage(data: String, size: Dp) {
     if (bitmap != null) {
         Image(
             bitmap = bitmap.asImageBitmap(),
-            contentDescription = "Invite code QR code",
+            contentDescription = "Friend code QR code",
             modifier = Modifier.size(size)
         )
     }
