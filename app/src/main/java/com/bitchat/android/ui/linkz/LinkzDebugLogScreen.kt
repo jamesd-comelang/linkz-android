@@ -14,9 +14,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -41,7 +47,8 @@ import kotlinx.coroutines.withContext
  *
  * Copy copies everything shown. Clear only clears this view, not the
  * phone's log buffer — Android does not let a normal app wipe it.
- * Refresh pulls fresh lines.
+ * Refresh pulls fresh lines. Search filters the shown lines by text
+ * (case-insensitive); Copy then copies only the matching lines.
  */
 @Composable
 fun LinkzDebugLogScreen(onBack: () -> Unit) {
@@ -52,6 +59,20 @@ fun LinkzDebugLogScreen(onBack: () -> Unit) {
     var error by remember { mutableStateOf<String?>(null) }
     var copied by remember { mutableStateOf(false) }
     var cleared by remember { mutableStateOf(false) }
+    var query by remember { mutableStateOf("") }
+
+    // Lines matching the search, case-insensitive. Empty query shows all.
+    val searching = query.isNotBlank()
+    val displayedText: String
+    val matchCount: Int
+    if (searching) {
+        val matches = logText.lines().filter { it.contains(query, ignoreCase = true) }
+        matchCount = matches.size
+        displayedText = matches.joinToString("\n")
+    } else {
+        matchCount = 0
+        displayedText = logText
+    }
 
     fun load() {
         scope.launch {
@@ -79,7 +100,7 @@ fun LinkzDebugLogScreen(onBack: () -> Unit) {
                     Context.CLIPBOARD_SERVICE
                 ) as ClipboardManager
                 clipboard.setPrimaryClip(
-                    ClipData.newPlainText("Linkz debug log", logText)
+                    ClipData.newPlainText("Linkz debug log", displayedText)
                 )
                 copied = true
             }) {
@@ -97,8 +118,45 @@ fun LinkzDebugLogScreen(onBack: () -> Unit) {
                 Text(text = "Refresh")
             }
         }
+        OutlinedTextField(
+            value = query,
+            onValueChange = { query = it },
+            placeholder = { Text(text = "Search logs") },
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Filled.Search,
+                    contentDescription = "Search"
+                )
+            },
+            trailingIcon = {
+                if (query.isNotEmpty()) {
+                    IconButton(onClick = { query = "" }) {
+                        Icon(
+                            imageVector = Icons.Filled.Clear,
+                            contentDescription = "Clear search"
+                        )
+                    }
+                }
+            },
+            singleLine = true,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+        )
+        Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = "This app's own logs, last 500 lines. Clear only clears this view.",
+            text = if (searching) {
+                val countText = if (matchCount == 0) {
+                    "No matches"
+                } else if (matchCount == 1) {
+                    "1 match"
+                } else {
+                    "$matchCount matches"
+                }
+                "This app's own logs, last 500 lines. $countText."
+            } else {
+                "This app's own logs, last 500 lines. Clear only clears this view."
+            },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 16.dp)
@@ -124,7 +182,11 @@ fun LinkzDebugLogScreen(onBack: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 else -> Text(
-                    text = logText,
+                    text = if (searching && matchCount == 0) {
+                        "No matches for \"$query\"."
+                    } else {
+                        displayedText
+                    },
                     fontFamily = FontFamily.Monospace,
                     fontSize = 12.sp
                 )
