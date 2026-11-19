@@ -1016,7 +1016,7 @@ class NostrRelayManager private constructor() {
                     val wasGiftWrap = pendingGiftWrapIDs.remove(response.eventId)
                     if (!response.accepted) {
                         val level = if (wasGiftWrap) Log.WARN else Log.ERROR
-                        Log.println(level, TAG, "Event rejected by relay: ${response.message ?: "no reason"}")
+                        Log.println(level, TAG, "Event rejected by relay $relayUrl: ${response.message ?: "no reason"}")
                     }
                 }
 
@@ -1182,6 +1182,7 @@ class NostrRelayManager private constructor() {
                 return
             }
             reconnectJobs.remove(relayUrl)?.cancel()
+            Log.i(TAG, "Nostr relay connected: $relayUrl")
             updateRelayStatus(relayUrl, true)
             
             // Restore all active subscriptions for this relay
@@ -1218,7 +1219,7 @@ class NostrRelayManager private constructor() {
         }
 
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-            Log.e(TAG, "Nostr WebSocket failure")
+            Log.e(TAG, "Nostr WebSocket failure ($relayUrl): ${t.javaClass.simpleName}: ${t.message}", t)
             handleDisconnection(relayUrl, webSocket, t, liveLocationToken)
         }
     }
