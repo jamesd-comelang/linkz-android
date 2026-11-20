@@ -46,7 +46,7 @@ import kotlinx.coroutines.delay
 /**
  * My Invite Code (一次性邀请码): the one-time npub that can receive exactly
  * one friend request — nothing else. The code stops working after one
- * request or 3 days, and regenerating invalidates the previous code
+ * request or 7 days, and regenerating invalidates the previous code
  * (WeChat's "reset my QR code" semantics).
  */
 @Composable
@@ -115,7 +115,7 @@ fun LinkzInviteCodeScreen(viewModel: ChatViewModel, onBack: () -> Unit) {
                         is InviteCodeManager.InviteStatus.Used ->
                             "Already used — this code accepted one request."
                         is InviteCodeManager.InviteStatus.Expired ->
-                            "This code expired after 3 days."
+                            "This code expired after 7 days."
                         else -> "No code yet."
                     },
                     style = MaterialTheme.typography.bodyLarge,
@@ -130,7 +130,7 @@ fun LinkzInviteCodeScreen(viewModel: ChatViewModel, onBack: () -> Unit) {
             Spacer(modifier = Modifier.height(24.dp))
             Text(
                 text = "Anyone with this code can add you — nothing else. " +
-                    "The code stops working after one request or 3 days. " +
+                    "The code stops working after one request or 7 days. " +
                     "Share it as a QR code or copy the text.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,

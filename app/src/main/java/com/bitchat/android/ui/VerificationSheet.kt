@@ -2,7 +2,6 @@ package com.bitchat.android.ui
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.QrCodeScanner
-import android.graphics.Bitmap
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -15,8 +14,6 @@ import androidx.camera.core.Preview
 import androidx.camera.core.SurfaceRequest
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.viewfinder.core.ImplementationMode
-import androidx.compose.animation.Crossfade
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -29,18 +26,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
-import androidx.compose.material3.TabRowDefaults
-import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -55,18 +46,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
-import androidx.core.graphics.createBitmap
-import androidx.core.graphics.set
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bitchat.android.R
@@ -82,9 +68,6 @@ import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
-import com.google.zxing.BarcodeFormat
-import com.google.zxing.common.BitMatrix
-import com.google.zxing.qrcode.QRCodeWriter
 import kotlinx.coroutines.flow.MutableStateFlow
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -100,14 +83,6 @@ fun VerificationSheet(
     if (!isPresented) return
 
     val accent = MaterialTheme.colorScheme.primary
-    
-    var selectedTab by remember { mutableStateOf(0) } // 0 = My Code, 1 = Scan
-    val nickname by viewModel.nickname.collectAsStateWithLifecycle()
-    val npub = remember { viewModel.getCurrentNpub() }
-
-    val qrString = remember(nickname, npub) {
-        viewModel.buildMyQRString(nickname, npub)
-    }
 
     BitchatBottomSheet(
         modifier = modifier,
@@ -126,72 +101,31 @@ fun VerificationSheet(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
             )
 
-            // Tabs
-            TabRow(
-                selectedTabIndex = selectedTab,
-                containerColor = Color.Transparent,
-                contentColor = accent,
-                indicator = { tabPositions ->
-                    TabRowDefaults.Indicator(
-                        Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
-                        color = accent
-                    )
-                }
-            ) {
-                Tab(
-                    selected = selectedTab == 0,
-                    onClick = { selectedTab = 0 },
-                    text = {
-                        Text(
-                            text = "My QR",
-                            fontSize = 14.sp
-                        )
-                    }
-                )
-                Tab(
-                    selected = selectedTab == 1,
-                    onClick = { selectedTab = 1 },
-                    text = {
-                        Text(
-                            text = "Scan",
-                            fontSize = 14.sp
-                        )
-                    }
-                )
-            }
-
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Content
-            Crossfade(
-                targetState = selectedTab, 
-                label = "VerificationTabCrossfade",
-                modifier = Modifier.weight(1f)
-            ) { tab ->
-                when (tab) {
-                    0 -> MyQrTabContent(
-                        qrString = qrString,
-                        nickname = nickname,
-                        accent = accent
-                    )
-                    1 -> ScanTabContent(
-                        accent = accent,
-                        onScan = { code ->
-                            val qr = VerificationService.verifyScannedQR(code)
-                            if (qr != null && viewModel.beginQRVerification(qr)) {
-                                selectedTab = 0
-                            } else {
-                                // An invite-code QR (a bare npub) opens the
-                                // friend-request dialog instead of verification.
-                                val inviteHex = InviteCodeManager.parseInviteCode(code)
-                                if (inviteHex != null) {
-                                    viewModel.onInviteCodeScanned(inviteHex)
-                                    viewModel.hideVerificationSheet()
-                                }
+            // Scan only: the own main-npub QR is hidden by design (the
+            // Friend Code screen is the only place a QR is shown), so
+            // there is no "My QR" tab anymore.
+            Box(modifier = Modifier.weight(1f)) {
+                ScanTabContent(
+                    accent = accent,
+                    onScan = { code ->
+                        val qr = VerificationService.verifyScannedQR(code)
+                        if (qr != null && viewModel.beginQRVerification(qr)) {
+                            // Verified: close the sheet. There is no
+                            // "show my code back" step anymore.
+                            viewModel.hideVerificationSheet()
+                        } else {
+                            // An invite-code QR (a bare npub) opens the
+                            // friend-request dialog instead of verification.
+                            val inviteHex = InviteCodeManager.parseInviteCode(code)
+                            if (inviteHex != null) {
+                                viewModel.onInviteCodeScanned(inviteHex)
+                                viewModel.hideVerificationSheet()
                             }
                         }
-                    )
-                }
+                    }
+                )
             }
             
             // Unverify Action
@@ -242,77 +176,6 @@ private fun VerificationHeader(
         )
         val dismiss = LocalSheetDismiss.current
         CloseButton(onClick = { dismiss?.invoke() ?: onClose() })
-    }
-}
-
-@Composable
-private fun MyQrTabContent(
-    qrString: String,
-    nickname: String,
-    accent: Color
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Top
-    ) {
-        Spacer(modifier = Modifier.height(24.dp))
-        
-        Text(
-            text = stringResource(R.string.verify_my_qr_title),
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onSurface
-        )
-        
-        Spacer(modifier = Modifier.height(32.dp))
-
-        if (qrString.isNotBlank()) {
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(Color.White)
-                    .padding(20.dp) // Quiet zone
-            ) {
-                QRCodeImage(data = qrString, size = 260.dp)
-            }
-        } else {
-            Box(
-                modifier = Modifier
-                    .size(260.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(Color.White.copy(alpha = 0.5f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = stringResource(R.string.verify_qr_unavailable),
-                    fontSize = 12.sp,
-                    color = Color.Black.copy(alpha = 0.6f)
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(32.dp))
-
-        // User Nickname
-        Text(
-            text = nickname,
-            style = MaterialTheme.typography.headlineSmall,
-            color = MaterialTheme.colorScheme.onSurface,
-            textAlign = TextAlign.Center
-        )
-        
-        Spacer(modifier = Modifier.height(8.dp))
-        
-        // Helper text
-        Text(
-            text = stringResource(R.string.app_name).lowercase(),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-            textAlign = TextAlign.Center
-        )
     }
 }
 
@@ -473,42 +336,6 @@ private fun ScannerView(
             modifier = Modifier.fillMaxSize()
         )
     }
-}
-
-@Composable
-private fun QRCodeImage(data: String, size: Dp) {
-    val sizePx = with(LocalDensity.current) { size.toPx().toInt() }
-    val bitmap = remember(data, sizePx) { generateQrBitmap(data, sizePx) }
-    if (bitmap != null) {
-        Image(
-            bitmap = bitmap.asImageBitmap(),
-            contentDescription = null,
-            modifier = Modifier.size(size)
-        )
-    }
-}
-
-private fun generateQrBitmap(data: String, sizePx: Int): Bitmap? {
-    if (data.isBlank() || sizePx <= 0) return null
-    return try {
-        val matrix = QRCodeWriter().encode(data, BarcodeFormat.QR_CODE, sizePx, sizePx)
-        bitmapFromMatrix(matrix)
-    } catch (_: Exception) {
-        null
-    }
-}
-
-private fun bitmapFromMatrix(matrix: BitMatrix): Bitmap {
-    val width = matrix.width
-    val height = matrix.height
-    val bitmap = createBitmap(width, height)
-    for (x in 0 until width) {
-        for (y in 0 until height) {
-            bitmap[x, y] =
-                if (matrix[x, y]) android.graphics.Color.BLACK else android.graphics.Color.WHITE
-        }
-    }
-    return bitmap
 }
 
 internal class QRCodeAnalyzer(

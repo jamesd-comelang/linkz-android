@@ -1364,14 +1364,6 @@ private fun LinkzMeTab(
                         )
                     }
                 }
-                IconButton(onClick = { viewModel.showVerificationSheet() }) {
-                    Icon(
-                        imageVector = Icons.Filled.QrCodeScanner,
-                        contentDescription = "My QR code",
-                        modifier = Modifier.size(24.dp),
-                        tint = MaterialTheme.colorScheme.onSurface
-                    )
-                }
                 Icon(
                     imageVector = Icons.Filled.ChevronRight,
                     contentDescription = null,

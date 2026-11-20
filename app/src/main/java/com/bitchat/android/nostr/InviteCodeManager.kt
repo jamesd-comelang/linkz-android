@@ -16,7 +16,7 @@ import com.bitchat.android.services.ContactIdentityResolver
  * (SecureIdentityStateManager) so it survives app restarts while the invite
  * is live, and dies with it:
  * - consumed when the first valid request arrives (single-use),
- * - expired 3 days after creation (like WeChat's friend requests),
+ * - expired 7 days after creation (like WeChat's QR codes),
  * - invalidated immediately when the user regenerates the code
  *   (WeChat's "reset my QR code" semantics).
  */
@@ -26,8 +26,8 @@ object InviteCodeManager {
     private const val INVITE_CREATED_AT_MS = "invite_created_at_ms"
     private const val INVITE_USED = "invite_used"
 
-    /** 3 days, matching WeChat's friend-request validity. */
-    const val VALIDITY_MS = 3L * 24 * 60 * 60 * 1000
+    /** 7 days, matching WeChat's QR code validity. */
+    const val VALIDITY_MS = 7L * 24 * 60 * 60 * 1000
 
     sealed interface InviteStatus {
         data class Valid(val identity: NostrIdentity, val expiresAtMs: Long) : InviteStatus

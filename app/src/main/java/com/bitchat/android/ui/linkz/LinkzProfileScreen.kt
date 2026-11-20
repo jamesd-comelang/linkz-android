@@ -56,7 +56,7 @@ import com.bitchat.android.ui.ChatViewModel
  * section, title on the left, value on the right, chevron at the far
  * right. Only rows that mean something in Linkz are kept:
  *
- * - Profile Photo, Name, Gender, Region, ID, My QR Code, My Invite Code,
+ * - Profile Photo, Name, Gender, Region, ID, My Invite Code,
  *   What's Up, Debug Logs.
  * - Mobile Number shows "Not Linked": Linkz has no accounts or
  *   phone numbers, so tapping it explains that instead of editing.
@@ -173,18 +173,6 @@ fun LinkzProfileScreen(
                         "Not available"
                     },
                     onClick = { showIdDialog = true }
-                )
-                LinkzProfileRow(
-                    title = "My QR Code",
-                    onClick = { viewModel.showVerificationSheet() },
-                    trailing = {
-                        Icon(
-                            imageVector = Icons.Outlined.QrCodeScanner,
-                            contentDescription = "QR code",
-                            modifier = Modifier.size(24.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
                 )
                 LinkzProfileRow(
                     title = "My Friend Code",

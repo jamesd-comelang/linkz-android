@@ -54,7 +54,7 @@ class FriendRequestProtocolTest {
     }
 
     @Test
-    fun `pending requests expire after three days, accepted ones do not`() {
+    fun `pending requests expire after seven days, accepted ones do not`() {
         val now = 1_700_000_000_000L
         val fresh = FriendRequest(
             requestId = "r1",

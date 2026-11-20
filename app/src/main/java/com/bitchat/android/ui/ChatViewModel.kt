@@ -1236,7 +1236,7 @@ class ChatViewModel(
     /**
      * Send a friend request to a one-time invite code. The invite npub can
      * carry only a request — it never becomes a DM channel — and the code
-     * dies after this one request or 3 days, whichever comes first.
+     * dies after this one request or 7 days, whichever comes first.
      */
     fun sendFriendRequest(inviteCodeText: String, greeting: String): SendFriendRequestResult {
         val inviteHex = InviteCodeManager.parseInviteCode(inviteCodeText)

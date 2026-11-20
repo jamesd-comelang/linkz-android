@@ -19,7 +19,7 @@ import com.google.gson.annotations.SerializedName
  * so the ordinary mutual-favorite Nostr DM path works afterwards with no
  * parallel transport.
  *
- * Requests live 3 days, like WeChat's friend requests, then expire.
+ * Requests live 7 days, like WeChat's QR codes, then expire.
  */
 
 enum class FriendRequestDirection { INCOMING, OUTGOING }
@@ -39,7 +39,7 @@ data class FriendRequest(
     val direction: FriendRequestDirection,
     val status: FriendRequestStatus = FriendRequestStatus.PENDING
 ) {
-    /** Pending requests expire 3 days after they were sent. Expired is derived, never stored. */
+    /** Pending requests expire 7 days after they were sent. Expired is derived, never stored. */
     fun isExpired(nowMs: Long = System.currentTimeMillis()): Boolean =
         status == FriendRequestStatus.PENDING &&
             nowMs - createdAtMs > FriendRequestProtocol.REQUEST_VALIDITY_MS
@@ -74,8 +74,8 @@ object FriendRequestProtocol {
     const val REQUEST_PREFIX = "linkz-friend-request:"
     const val ACCEPT_PREFIX = "linkz-friend-accept:"
 
-    /** 3 days, matching WeChat's friend-request validity. */
-    const val REQUEST_VALIDITY_MS = 3L * 24 * 60 * 60 * 1000
+    /** 7 days, matching WeChat's QR code validity. */
+    const val REQUEST_VALIDITY_MS = 7L * 24 * 60 * 60 * 1000
 
     private val gson = Gson()
 
