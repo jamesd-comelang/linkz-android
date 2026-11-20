@@ -66,7 +66,10 @@ fun LinkzNewFriendsScreen(viewModel: ChatViewModel, onBack: () -> Unit) {
             )
         } else {
             LazyColumn(modifier = Modifier.fillMaxSize()) {
-                items(sorted, key = { it.requestId }) { request ->
+                // Key by direction as well as requestId: one phone can hold
+                // both directions of the same request (a request sent to
+                // your own code), and duplicate keys crash the list.
+                items(sorted, key = { "${it.direction}:${it.requestId}" }) { request ->
                     LinkzFriendRequestRow(
                         request = request,
                         onAccept = { viewModel.acceptFriendRequest(request.requestId) },
