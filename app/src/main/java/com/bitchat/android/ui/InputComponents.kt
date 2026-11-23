@@ -1,7 +1,6 @@
 package com.bitchat.android.ui
 
 import android.view.HapticFeedbackConstants
-import com.bitchat.android.ui.theme.BitchatFontFamily
 // [Goose] TODO: Replace inline file attachment stub with FilePickerButton abstraction that dispatches via FileShareDispatcher
 
 
@@ -58,6 +57,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
@@ -106,7 +106,7 @@ class SlashCommandVisualTransformation(
             builder.addStyle(
                 style = SpanStyle(
                     color = commandColor,
-                    fontFamily = BitchatFontFamily,
+                    fontFamily = FontFamily.Default,
                     fontWeight = FontWeight.Medium,
                     background = commandBackground
                 ),
@@ -155,7 +155,7 @@ class MentionVisualTransformation(
             builder.addStyle(
                 style = SpanStyle(
                     color = mentionColor,
-                    fontFamily = BitchatFontFamily,
+                    fontFamily = FontFamily.Default,
                     fontWeight = FontWeight.SemiBold,
                 ),
                 start = start,
@@ -165,7 +165,7 @@ class MentionVisualTransformation(
                 builder.addStyle(
                     style = SpanStyle(
                         color = mentionColor.copy(alpha = SUFFIX_ALPHA),
-                        fontFamily = BitchatFontFamily,
+                        fontFamily = FontFamily.Default,
                         fontWeight = FontWeight.SemiBold,
                     ),
                     start = suffixStart,
@@ -205,23 +205,24 @@ class CombinedVisualTransformation(private val transformations: List<VisualTrans
 
 
 /**
- * Minimum height of the composer pill.
+ * Minimum height of the composer field.
  *
  * Roomy on purpose. The composer is a primary target that gets hit constantly, and the previous
- * 44.dp felt cramped once the action buttons moved inside it.
+ * 44.dp felt cramped.
  */
 private val ComposerMinHeight = 52.dp
 
 /**
- * Composer corner radius.
+ * Composer field corner radius.
  *
- * Half of [ComposerMinHeight], so a single-line composer is a true capsule. Fixed rather than
- * percentage-based so that when the field grows to several lines it stays a generously rounded
- * rectangle instead of degenerating into a stadium.
+ * A modest 12.dp rounded rectangle (WeChat-style), not a capsule: the field sits beside the
+ * voice toggle and the send/"+" buttons now, so a stadium shape would read as one more pill
+ * in a row of pills. Fixed rather than percentage-based so that when the field grows to
+ * several lines it keeps the same corners.
  */
-private val ComposerShape = RoundedCornerShape(ComposerMinHeight / 2)
+private val ComposerFieldShape = RoundedCornerShape(12.dp)
 
-/** Tap target for every button inside the pill. */
+/** Tap target for the composer's buttons (voice toggle, send, "+"). */
 private val ComposerButtonSize = 40.dp
 
 /** Diameter of the visible disc inside that tap target. */
@@ -231,7 +232,7 @@ private val ComposerButtonDisc = 36.dp
 internal val ComposerIconSize = 20.dp
 
 /**
- * Opacity of the composer pill.
+ * Opacity of the composer field.
  *
  * Not fully opaque: the message list scrolls underneath the composer, and letting a hint of it
  * through is what makes the bar read as sitting *over* the conversation rather than boxing it in.
@@ -306,6 +307,7 @@ internal fun ComposerActionSurface(
 }
 
 @Composable
+@Composable
 fun MessageInput(
     value: TextFieldValue,
     onValueChange: (TextFieldValue) -> Unit,
@@ -333,6 +335,14 @@ fun MessageInput(
     var amplitude by remember { mutableStateOf(0) }
     val cashuToken = remember(value.text) {
         CashuTokenDecoder.bareToken(value.text)
+    }
+    // Voice mode (hold-to-talk bar instead of the text field) and the WeChat-style "+"
+    // attach panel. Typing or recording closes the panel, so it never covers the field
+    // while composing.
+    var voiceMode by remember { mutableStateOf(false) }
+    var attachPanelOpen by remember { mutableStateOf(false) }
+    LaunchedEffect(hasText, isRecording) {
+        if (hasText || isRecording) attachPanelOpen = false
     }
 
     // Slide-to-cancel: while recording, the mic button streams the finger position (root
@@ -389,7 +399,7 @@ fun MessageInput(
         animationSpec = tween(BitchatMotion.STANDARD_MS, easing = FastOutSlowInEasing),
         label = "composerBorderWidth"
     )
-    // A barely-there lift on focus. While recording the pill turns into a neutral grey slab
+    // A barely-there lift on focus. While recording the field turns into a neutral grey slab
     // (NOT the brand-tinted elevation color) so it protrudes from the flat black chat.
     val containerColor by animateColorAsState(
         targetValue = when {
@@ -401,304 +411,367 @@ fun MessageInput(
         label = "composerContainer"
     )
 
-    Row(
-        modifier = modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.Bottom
+    val latestSelectedPeer = rememberUpdatedState(selectedPrivatePeer)
+    val latestChannel = rememberUpdatedState(currentChannel)
+    val latestOnSendVoiceNote = rememberUpdatedState(onSendVoiceNote)
+
+    Column(
+        modifier = modifier.padding(horizontal = 12.dp, vertical = 10.dp)
     ) {
-        // MARK: - The pill. Field and action buttons are one visual object.
         Row(
-            modifier = Modifier
-                .weight(1f)
-                .heightIn(min = ComposerMinHeight)
-                // Grow smoothly as the field wraps to more lines rather than jumping a line at
-                // a time.
-                .animateContentSize(
-                    animationSpec = tween(BitchatMotion.STANDARD_MS, easing = FastOutSlowInEasing)
-                )
-                .background(containerColor, ComposerShape)
-                .border(borderWidth, borderColor, ComposerShape),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.Bottom
         ) {
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(start = 18.dp, end = 4.dp, top = 15.dp, bottom = 15.dp)
-            ) {
-                // Always keep the text field mounted to retain focus and avoid IME collapse
-                BasicTextField(
-                    value = value,
-                    onValueChange = onValueChange,
-                    // Near-white, not terminal green: this is the one place in the app where the
-                    // user is composing rather than reading, and green-on-black is tiring to
-                    // type into.
-                    textStyle = MaterialTheme.typography.bodyMedium.copy(
-                        color = if (cashuToken == null) colorScheme.onSurface else Color.Transparent,
-                        fontFamily = BitchatFontFamily
-                    ),
-                    cursorBrush = SolidColor(
-                        if (isRecording || cashuToken != null) Color.Transparent else colorScheme.onSurface
-                    ),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                    keyboardActions = KeyboardActions(onSend = {
-                        if (hasText) onSend()
-                    }),
-                    singleLine = cashuToken != null,
-                    // Cap the growth so a pasted wall of text cannot swallow the message list.
-                    maxLines = 6,
-                    visualTransformation = remember(
-                        palette,
-                        colorScheme.primary,
-                        mentionPeerIdentities,
-                    ) {
-                        CombinedVisualTransformation(
-                            listOf(
-                                SlashCommandVisualTransformation(
-                                    commandColor = colorScheme.primary,
-                                    commandBackground = colorScheme.primary.copy(alpha = 0.14f),
-                                ),
-                                MentionVisualTransformation(
-                                    mentionPeerIdentities = mentionPeerIdentities,
-                                    palette = palette,
-                                ),
-                            )
-                        )
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .focusRequester(focusRequester)
-                        .onFocusChanged { focusState ->
-                            isFocused.value = focusState.isFocused
-                        }
-                )
-
-                cashuToken?.let { token ->
-                    CashuPaymentChip(
-                        token = token,
-                        onClick = { focusRequester.requestFocus() },
-                        showActions = false,
-                    )
-                }
-
-                // Placeholder fades rather than blinking, which matters because it reappears
-                // every time a message is sent.
-                val placeholderAlpha by animateFloatAsState(
-                    targetValue = if (value.text.isEmpty() && !isRecording) 1f else 0f,
-                    animationSpec = tween(BitchatMotion.STANDARD_MS, easing = FastOutSlowInEasing),
-                    label = "placeholderAlpha"
-                )
-                if (placeholderAlpha > 0f) {
-                    Text(
-                        text = if (
-                            selectedPrivatePeer == null && currentChannel == null && activePublicTalker != null
-                        ) "$activePublicTalker is live" else stringResource(R.string.type_a_message_placeholder),
-                        style = MaterialTheme.typography.bodyMedium.copy(
-                            fontFamily = BitchatFontFamily
-                        ),
-                        color = palette.textTertiary,
-                        maxLines = 1,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .alpha(placeholderAlpha)
-                    )
-                }
-
-                // Recording visualiser, layered over the (empty) field.
-                val waveformAlpha by animateFloatAsState(
-                    targetValue = if (isRecording) 1f else 0f,
-                    animationSpec = tween(BitchatMotion.STANDARD_MS, easing = FastOutSlowInEasing),
-                    label = "waveformAlpha"
-                )
+            // MARK: - Voice toggle, left of the field. A plain icon button, no disc: tapping
+            // it switches between the text field and hold-to-talk voice input.
+            if (showMediaButtons) {
                 if (isRecording) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            // Same content height as the single-line text field, so the pill
-                            // (and the separator above it) does not change size when the
-                            // recording visualizer replaces the field.
-                            .height(22.dp)
-                            .alpha(waveformAlpha),
-                        verticalAlignment = Alignment.CenterVertically
+                    // While recording the toggle's slot becomes the slide-to-cancel target,
+                    // so the finger can slide left from the hold-to-talk bar straight into it.
+                    RecordingCancelButton(
+                        hover = cancelHover,
+                        proximity = cancelProximity,
+                        pull = cancelPull,
+                        onBounds = { cancelBounds = it }
+                    )
+                } else {
+                    IconButton(
+                        onClick = { voiceMode = !voiceMode },
+                        modifier = Modifier.size(44.dp)
                     ) {
-                        // Timestamp on the left, clear of the thumb resting on the record
-                        // button; the waveform keeps the remaining width and its history
-                        // scrolls off the left edge while live data streams in from the right.
-                        val secs = (elapsedMs / 1000).toInt()
-                        Text(
-                            text = (if (isLiveRecording) "LIVE · " else "") +
-                                String.format("%02d:%02d", secs / 60, secs % 60),
-                            fontFamily = BitchatFontFamily,
-                            color = colorScheme.error,
-                            fontSize = (BASE_FONT_SIZE - 4).sp
-                        )
-                        Spacer(Modifier.width(12.dp))
-                        RealtimeScrollingWaveform(
-                            modifier = Modifier.weight(1f).height(22.dp),
-                            amplitudeNorm = normalizeAmplitudeSample(amplitude)
+                        Icon(
+                            imageVector = if (voiceMode) Icons.Filled.Keyboard else Icons.Filled.Mic,
+                            contentDescription = stringResource(
+                                if (voiceMode) R.string.cd_show_keyboard else R.string.cd_voice_input
+                            ),
+                            tint = if (voiceMode) colorScheme.primary else colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(24.dp)
                         )
                     }
                 }
             }
 
-            // MARK: - Action cluster, inside the pill.
-            //
-            // Swaps between the auxiliary buttons and send. AnimatedContent cross-fades and
-            // scales between the two, and SizeTransform animates the width change, so typing the
-            // first character morphs camera+mic into send instead of snapping.
-            val latestSelectedPeer = rememberUpdatedState(selectedPrivatePeer)
-            val latestChannel = rememberUpdatedState(currentChannel)
-            val latestOnSendVoiceNote = rememberUpdatedState(onSendVoiceNote)
-
-            AnimatedContent(
-                targetState = hasText,
-                transitionSpec = {
-                    (
-                        fadeIn(tween(BitchatMotion.STANDARD_MS)) +
-                            scaleIn(
-                                initialScale = 0.7f,
-                                animationSpec = tween(
-                                    BitchatMotion.STANDARD_MS,
-                                    easing = FastOutSlowInEasing
-                                )
-                            )
-                    ).togetherWith(
-                        fadeOut(tween(BitchatMotion.QUICK_MS)) +
-                            scaleOut(
-                                targetScale = 0.7f,
-                                animationSpec = tween(
-                                    BitchatMotion.QUICK_MS,
-                                    easing = FastOutSlowInEasing
-                                )
-                            )
-                    ) using SizeTransform(clip = false) { _, _ ->
-                        tween(BitchatMotion.STANDARD_MS, easing = FastOutSlowInEasing)
-                    }
-                },
-                modifier = Modifier.padding(end = 6.dp, bottom = 6.dp),
-                label = "composerActions"
-            ) { showSend ->
-                if (showSend) {
-                    SendButton(
-                        isAccented = latestSelectedPeer.value != null || latestChannel.value != null,
-                        onSend = onSend
+            // MARK: - The field: a rounded white rectangle (WeChat-style), not a capsule.
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .heightIn(min = ComposerMinHeight)
+                    // Grow smoothly as the field wraps to more lines rather than jumping a line at
+                    // a time.
+                    .animateContentSize(
+                        animationSpec = tween(BitchatMotion.STANDARD_MS, easing = FastOutSlowInEasing)
                     )
-                } else {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (showMediaButtons) {
-                            // The camera steps aside while recording so the microphone is the
-                            // only thing that can be released.
-                            AnimatedVisibility(
-                                visible = !isRecording,
-                                enter = fadeIn(tween(BitchatMotion.STANDARD_MS)) +
-                                    expandHorizontally(
-                                        tween(BitchatMotion.STANDARD_MS, easing = FastOutSlowInEasing)
+                    .background(containerColor, ComposerFieldShape)
+                    .border(borderWidth, borderColor, ComposerFieldShape)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 18.dp, end = 12.dp, top = 15.dp, bottom = 15.dp)
+                ) {
+                    // Always keep the text field mounted to retain focus and avoid IME collapse,
+                    // even in voice mode — the hold-to-talk bar covers it, and its text and
+                    // cursor go transparent so nothing shows through.
+                    BasicTextField(
+                        value = value,
+                        onValueChange = onValueChange,
+                        // Near-white, not terminal green: this is the one place in the app where the
+                        // user is composing rather than reading, and green-on-black is tiring to
+                        // type into.
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(
+                            color = if (cashuToken == null && !voiceMode) colorScheme.onSurface else Color.Transparent,
+                            fontFamily = FontFamily.Default
+                        ),
+                        cursorBrush = SolidColor(
+                            if (isRecording || cashuToken != null || voiceMode) Color.Transparent else colorScheme.onSurface
+                        ),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                        keyboardActions = KeyboardActions(onSend = {
+                            if (hasText) onSend()
+                        }),
+                        singleLine = cashuToken != null,
+                        // Cap the growth so a pasted wall of text cannot swallow the message list.
+                        maxLines = 6,
+                        visualTransformation = remember(
+                            palette,
+                            colorScheme.primary,
+                            mentionPeerIdentities,
+                        ) {
+                            CombinedVisualTransformation(
+                                listOf(
+                                    SlashCommandVisualTransformation(
+                                        commandColor = colorScheme.primary,
+                                        commandBackground = colorScheme.primary.copy(alpha = 0.14f),
                                     ),
-                                exit = fadeOut(tween(BitchatMotion.QUICK_MS)) +
-                                    shrinkHorizontally(
-                                        tween(BitchatMotion.QUICK_MS, easing = FastOutSlowInEasing)
-                                    )
-                            ) {
-                                ImagePickerButton(
-                                    onImageReady = { outPath ->
-                                        onSendImageNote(
-                                            latestSelectedPeer.value,
-                                            latestChannel.value,
-                                            outPath
-                                        )
-                                    }
+                                    MentionVisualTransformation(
+                                        mentionPeerIdentities = mentionPeerIdentities,
+                                        palette = palette,
+                                    ),
                                 )
-                            }
-
-                            // The slide-to-cancel target sits well clear of the record
-                            // button (camera's slot plus a gap), rests as a cancel disc,
-                            // leans toward an approaching finger and snaps red on hover.
-                            AnimatedVisibility(
-                                visible = isRecording,
-                                enter = fadeIn(tween(BitchatMotion.STANDARD_MS)) +
-                                    expandHorizontally(
-                                        tween(BitchatMotion.STANDARD_MS, easing = FastOutSlowInEasing)
-                                    ),
-                                exit = fadeOut(tween(BitchatMotion.QUICK_MS)) +
-                                    shrinkHorizontally(
-                                        tween(BitchatMotion.QUICK_MS, easing = FastOutSlowInEasing)
-                                    )
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    RecordingCancelButton(
-                                        hover = cancelHover,
-                                        proximity = cancelProximity,
-                                        pull = cancelPull,
-                                        onBounds = { cancelBounds = it }
-                                    )
-                                    Spacer(Modifier.width(24.dp))
-                                }
-                            }
-
-                            VoiceRecordButton(
-                                isRecording = isRecording,
-                                recorderFactory = recorderFactory?.let { factory ->
-                                    { factory(latestSelectedPeer.value, latestChannel.value) }
-                                },
-                                courtesyActive = selectedPrivatePeer == null && currentChannel == null &&
-                                    activePublicTalker != null,
-                                shouldCancel = { pos ->
-                                    cancelBounds?.inflate(cancelSlackPx)?.contains(pos) == true
-                                },
-                                onTrackFinger = { cancelFinger = it },
-                                onStart = { live ->
-                                    isRecording = true
-                                    isLiveRecording = live
-                                    elapsedMs = 0L
-                                    // Keep existing focus to avoid IME collapse, but do not
-                                    // force-show the keyboard.
-                                    if (isFocused.value) {
-                                        try { focusRequester.requestFocus() } catch (_: Exception) {}
-                                    }
-                                },
-                                onAmplitude = { amp, ms ->
-                                    amplitude = amp
-                                    elapsedMs = ms
-                                },
-                                onFinish = { path ->
-                                    isRecording = false
-                                    isLiveRecording = false
-                                    // Extract and cache the waveform from the actual audio file
-                                    // so it matches the receiver's rendering.
-                                    AudioWaveformExtractor.extractAsync(path, sampleCount = 120) { arr ->
-                                        if (arr != null) {
-                                            try {
-                                                com.bitchat.android.features.voice.VoiceWaveformCache.put(path, arr)
-                                            } catch (_: Exception) {}
-                                        }
-                                    }
-                                    latestOnSendVoiceNote.value(
-                                        latestSelectedPeer.value,
-                                        latestChannel.value,
-                                        path
-                                    )
-                                },
-                                // Any capture that ends without a file must clear the recording
-                                // state here too, otherwise the pill stays red with a live
-                                // waveform over an empty field.
-                                onCancel = {
-                                    isRecording = false
-                                    isLiveRecording = false
-                                    amplitude = 0
-                                    elapsedMs = 0L
-                                }
                             )
-                        } else {
-                            // No media in this context, so keep an inert send button rather than
-                            // leaving a hole where the action cluster should be.
-                            SendButton(isAccented = false, onSend = {}, enabled = false)
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .focusRequester(focusRequester)
+                            .onFocusChanged { focusState ->
+                                isFocused.value = focusState.isFocused
+                            }
+                    )
+
+                    if (!voiceMode) {
+                        cashuToken?.let { token ->
+                            CashuPaymentChip(
+                                token = token,
+                                onClick = { focusRequester.requestFocus() },
+                                showActions = false,
+                            )
                         }
                     }
+
+                    // Placeholder fades rather than blinking, which matters because it reappears
+                    // every time a message is sent.
+                    val placeholderAlpha by animateFloatAsState(
+                        targetValue = if (value.text.isEmpty() && !isRecording && !voiceMode) 1f else 0f,
+                        animationSpec = tween(BitchatMotion.STANDARD_MS, easing = FastOutSlowInEasing),
+                        label = "placeholderAlpha"
+                    )
+                    if (placeholderAlpha > 0f) {
+                        Text(
+                            text = if (
+                                selectedPrivatePeer == null && currentChannel == null && activePublicTalker != null
+                            ) "$activePublicTalker is live" else stringResource(R.string.type_a_message_placeholder),
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontFamily = FontFamily.Default
+                            ),
+                            color = palette.textTertiary,
+                            maxLines = 1,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .alpha(placeholderAlpha)
+                        )
+                    }
+                }
+
+                // Voice mode: the hold-to-talk bar covers the field. Pressing and holding
+                // anywhere on it records; sliding left into the cancel disc discards.
+                if (voiceMode && showMediaButtons) {
+                    VoiceRecordButton(
+                        holdToTalk = true,
+                        modifier = Modifier.fillMaxSize(),
+                        isRecording = isRecording,
+                        recorderFactory = recorderFactory?.let { factory ->
+                            { factory(latestSelectedPeer.value, latestChannel.value) }
+                        },
+                        courtesyActive = selectedPrivatePeer == null && currentChannel == null &&
+                            activePublicTalker != null,
+                        shouldCancel = { pos ->
+                            cancelBounds?.inflate(cancelSlackPx)?.contains(pos) == true
+                        },
+                        onTrackFinger = { cancelFinger = it },
+                        onStart = { live ->
+                            isRecording = true
+                            isLiveRecording = live
+                            elapsedMs = 0L
+                            // Keep existing focus to avoid IME collapse, but do not
+                            // force-show the keyboard.
+                            if (isFocused.value) {
+                                try { focusRequester.requestFocus() } catch (_: Exception) {}
+                            }
+                        },
+                        onAmplitude = { amp, ms ->
+                            amplitude = amp
+                            elapsedMs = ms
+                        },
+                        onFinish = { path ->
+                            isRecording = false
+                            isLiveRecording = false
+                            // Extract and cache the waveform from the actual audio file
+                            // so it matches the receiver's rendering.
+                            AudioWaveformExtractor.extractAsync(path, sampleCount = 120) { arr ->
+                                if (arr != null) {
+                                    try {
+                                        com.bitchat.android.features.voice.VoiceWaveformCache.put(path, arr)
+                                    } catch (_: Exception) {}
+                                }
+                            }
+                            latestOnSendVoiceNote.value(
+                                latestSelectedPeer.value,
+                                latestChannel.value,
+                                path
+                            )
+                        },
+                        // Any capture that ends without a file must clear the recording
+                        // state here too, otherwise the field stays red with a live
+                        // waveform over an empty field.
+                        onCancel = {
+                            isRecording = false
+                            isLiveRecording = false
+                            amplitude = 0
+                            elapsedMs = 0L
+                        }
+                    ) {
+                        if (isRecording) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 18.dp)
+                                    // Same content height as the single-line text field, so the
+                                    // field does not change size when the recording readout
+                                    // replaces the label.
+                                    .height(22.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // Timestamp on the left, clear of the thumb resting on the bar;
+                                // the waveform keeps the remaining width and its history scrolls
+                                // off the left edge while live data streams in from the right.
+                                val secs = (elapsedMs / 1000).toInt()
+                                Text(
+                                    text = (if (isLiveRecording) "LIVE · " else "") +
+                                        String.format("%02d:%02d", secs / 60, secs % 60),
+                                    fontFamily = FontFamily.Default,
+                                    color = colorScheme.error,
+                                    fontSize = (BASE_FONT_SIZE - 4).sp
+                                )
+                                Spacer(Modifier.width(12.dp))
+                                RealtimeScrollingWaveform(
+                                    modifier = Modifier.weight(1f).height(22.dp),
+                                    amplitudeNorm = normalizeAmplitudeSample(amplitude)
+                                )
+                            }
+                        } else {
+                            Text(
+                                text = stringResource(R.string.hold_to_talk),
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontFamily = FontFamily.Default
+                                ),
+                                color = palette.textTertiary,
+                                maxLines = 1
+                            )
+                        }
+                    }
+                }
+            }
+
+            // MARK: - Right of the field: Send when there is text, else the "+" that opens
+            // the attach panel. No emoji button: the app has no emoji picker, and a button
+            // that opens nothing would be a dead control.
+            if (showMediaButtons) {
+                // Typing the first character morphs "+" into send instead of snapping.
+                AnimatedContent(
+                    targetState = hasText,
+                    transitionSpec = {
+                        (
+                            fadeIn(tween(BitchatMotion.STANDARD_MS)) +
+                                scaleIn(
+                                    initialScale = 0.7f,
+                                    animationSpec = tween(
+                                        BitchatMotion.STANDARD_MS,
+                                        easing = FastOutSlowInEasing
+                                    )
+                                )
+                        ).togetherWith(
+                            fadeOut(tween(BitchatMotion.QUICK_MS)) +
+                                scaleOut(
+                                    targetScale = 0.7f,
+                                    animationSpec = tween(
+                                        BitchatMotion.QUICK_MS,
+                                        easing = FastOutSlowInEasing
+                                    )
+                                )
+                        ) using SizeTransform(clip = false) { _, _ ->
+                            tween(BitchatMotion.STANDARD_MS, easing = FastOutSlowInEasing)
+                        }
+                    },
+                    modifier = Modifier.padding(start = 4.dp),
+                    label = "composerActions"
+                ) { showSend ->
+                    if (showSend) {
+                        SendButton(
+                            isAccented = latestSelectedPeer.value != null || latestChannel.value != null,
+                            onSend = onSend
+                        )
+                    } else {
+                        IconButton(
+                            onClick = { attachPanelOpen = !attachPanelOpen },
+                            modifier = Modifier.size(44.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.AddCircleOutline,
+                                contentDescription = stringResource(R.string.cd_pick_media),
+                                tint = colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    }
+                }
+            } else {
+                // No media in this context, so keep an inert send button rather than
+                // leaving a hole where the action cluster should be.
+                SendButton(isAccented = false, onSend = {}, enabled = false)
+            }
+        }
+
+        // MARK: - Attach panel (the WeChat "+" panel): photo and file, with labels. The
+        // pickers stay mounted while the panel is open, so their activity-result launchers
+        // survive until the pick returns; the panel closes once a pick is handed off.
+        AnimatedVisibility(
+            visible = attachPanelOpen && showMediaButtons,
+            enter = fadeIn(tween(BitchatMotion.STANDARD_MS)) +
+                expandVertically(tween(BitchatMotion.STANDARD_MS, easing = FastOutSlowInEasing)),
+            exit = fadeOut(tween(BitchatMotion.QUICK_MS)) +
+                shrinkVertically(tween(BitchatMotion.QUICK_MS, easing = FastOutSlowInEasing))
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 12.dp, bottom = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(28.dp)
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    ImagePickerButton(
+                        onImageReady = { outPath ->
+                            attachPanelOpen = false
+                            onSendImageNote(
+                                latestSelectedPeer.value,
+                                latestChannel.value,
+                                outPath
+                            )
+                        }
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = stringResource(R.string.pick_image),
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontFamily = FontFamily.Default
+                        ),
+                        color = palette.textTertiary
+                    )
+                }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    FilePickerButton(
+                        onFileReady = { outPath ->
+                            attachPanelOpen = false
+                            onSendFileNote(
+                                latestSelectedPeer.value,
+                                latestChannel.value,
+                                outPath
+                            )
+                        }
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = stringResource(R.string.cd_pick_file),
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontFamily = FontFamily.Default
+                        ),
+                        color = palette.textTertiary
+                    )
                 }
             }
         }
     }
-
-    // Auto-stop handled inside VoiceRecordButton
 }
+
 
 /**
  * Slide-to-cancel target shown beside the record button while capturing. It always shows the
@@ -857,7 +930,7 @@ fun CommandSuggestionItem(
         Text(
             text = allCommands.joinToString(", "),
             style = MaterialTheme.typography.bodySmall.copy(
-                fontFamily = BitchatFontFamily,
+                fontFamily = FontFamily.Default,
                 fontWeight = FontWeight.Medium
             ),
             color = colorScheme.primary,
@@ -869,7 +942,7 @@ fun CommandSuggestionItem(
             Text(
                 text = syntax,
                 style = MaterialTheme.typography.bodySmall.copy(
-                    fontFamily = BitchatFontFamily
+                    fontFamily = FontFamily.Default
                 ),
                 color = colorScheme.onSurfaceVariant,
                 fontSize = (BASE_FONT_SIZE - 4).sp
@@ -880,7 +953,7 @@ fun CommandSuggestionItem(
         Text(
             text = suggestion.description,
             style = MaterialTheme.typography.bodySmall.copy(
-                fontFamily = BitchatFontFamily
+                fontFamily = FontFamily.Default
             ),
             color = palette.textTertiary,
             fontSize = (BASE_FONT_SIZE - 4).sp,
@@ -988,7 +1061,7 @@ fun MentionSuggestionItem(
         Text(
             text = stringResource(R.string.mention_suggestion_at, suggestion),
             style = MaterialTheme.typography.bodySmall.copy(
-                fontFamily = BitchatFontFamily,
+                fontFamily = FontFamily.Default,
                 fontWeight = FontWeight.SemiBold
             ),
             color = userColor,
@@ -1003,7 +1076,7 @@ fun MentionSuggestionItem(
         Text(
             text = stringResource(R.string.mention),
             style = MaterialTheme.typography.bodySmall.copy(
-                fontFamily = BitchatFontFamily
+                fontFamily = FontFamily.Default
             ),
             color = palette.textTertiary,
             fontSize = (BASE_FONT_SIZE - 4).sp,

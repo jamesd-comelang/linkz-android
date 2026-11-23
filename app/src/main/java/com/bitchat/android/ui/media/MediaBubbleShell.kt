@@ -4,45 +4,35 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.bitchat.android.core.ui.component.text.AnnotatedClickableText
 import com.bitchat.android.model.BitchatMessage
-import com.bitchat.android.ui.DeliveryStatusIcon
-import com.bitchat.android.ui.formatTextMessageMetadata
-import com.bitchat.android.ui.formatTextMessageSender
+import com.bitchat.android.ui.formatChannelSenderLabel
 import com.bitchat.android.ui.isFromSelf
-import com.bitchat.android.ui.theme.BitchatFontFamily
 import com.bitchat.android.ui.theme.ChatVisualTokens
-import com.bitchat.android.ui.theme.LocalBitchatPalette
 import com.bitchat.android.ui.theme.MessageSenderTextStyle
 import com.bitchat.android.ui.theme.linkzBubbleStyle
-import java.text.SimpleDateFormat
 
 /**
  * Classic messenger shell for media messages (images, voice notes) in `ChatUiMode.Bubbles`,
  * mirroring the text-bubble treatment: Linkz-style fills (green for own,
  * theme surface for incoming, see `linkzBubbleStyle`), the speaker-side
- * corner tightens into a tail, the sender's name heads the first bubble
- * of a run, and the timestamp (plus delivery ticks for own private
- * messages) rides flush-right beneath the media. The shell itself is
+ * corner tightens into a tail, and in a channel the sender's plain nickname sits above the
+ * bubble. No timestamp or delivery marks live inside the bubble. The shell itself is
  * long-clickable so media bubbles always open the message action sheet
  * even when no sender label is shown and the media consumes touches
  * (voice-note player controls).
@@ -54,17 +44,16 @@ fun MediaBubbleShell(
     currentUserNickname: String,
     myPeerID: String,
     showSender: Boolean,
-    timeFormatter: SimpleDateFormat,
     onNicknameClick: ((String) -> Unit)?,
     onLongPress: (() -> Unit)?,
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
-    val palette = LocalBitchatPalette.current
     val haptic = LocalHapticFeedback.current
+    val colorScheme = MaterialTheme.colorScheme
     val isSelf = message.isFromSelf(currentUserNickname, myPeerID)
 
-    val bubbleStyle = linkzBubbleStyle(isSelf, MaterialTheme.colorScheme)
+    val bubbleStyle = linkzBubbleStyle(isSelf, colorScheme)
 
     val corner = ChatVisualTokens.BubbleCornerRadius
     val tail = ChatVisualTokens.BubbleTailRadius
@@ -74,10 +63,46 @@ fun MediaBubbleShell(
         RoundedCornerShape(topStart = corner, topEnd = corner, bottomEnd = corner, bottomStart = tail)
     }
 
+    // Channel only: the sender's plain nickname above the bubble. DMs show no name,
+    // and no timestamp or delivery marks live inside the bubble.
+    val labelText = remember(message, colorScheme.onSurfaceVariant) {
+        if (showSender && !isSelf && !message.isPrivate) {
+            formatChannelSenderLabel(
+                message = message,
+                isSelf = false,
+                labelColor = colorScheme.onSurfaceVariant,
+            )
+        } else {
+            null
+        }
+    }
+
     Column(
         modifier = modifier.fillMaxWidth(),
         horizontalAlignment = if (isSelf) Alignment.End else Alignment.Start,
     ) {
+        if (labelText != null) {
+            AnnotatedClickableText(
+                text = labelText,
+                annotationTags = listOf("nickname_click"),
+                onAnnotationClick = { tag, item ->
+                    if (tag == "nickname_click" && onNicknameClick != null) {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onNicknameClick.invoke(item)
+                        true
+                    } else {
+                        false
+                    }
+                },
+                onLongPress = { onLongPress?.invoke() },
+                modifier = Modifier.padding(bottom = 2.dp),
+                fontFamily = FontFamily.Default,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis,
+                style = MessageSenderTextStyle,
+            )
+        }
+
         Box(
             modifier = Modifier
                 .border(
@@ -102,54 +127,7 @@ fun MediaBubbleShell(
                     vertical = ChatVisualTokens.BubblePaddingVertical,
                 )
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                if (showSender && !isSelf) {
-                    val senderText = remember(message, currentUserNickname, myPeerID, palette) {
-                        formatTextMessageSender(
-                            message = message,
-                            currentUserNickname = currentUserNickname,
-                            myPeerID = myPeerID,
-                            palette = palette,
-                        )
-                    }
-                    AnnotatedClickableText(
-                        text = senderText,
-                        annotationTags = listOf("nickname_click"),
-                        onAnnotationClick = { tag, item ->
-                            if (tag == "nickname_click" && onNicknameClick != null) {
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                onNicknameClick.invoke(item)
-                                true
-                            } else {
-                                false
-                            }
-                        },
-                        onLongPress = { onLongPress?.invoke() },
-                        fontFamily = BitchatFontFamily,
-                        softWrap = false,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MessageSenderTextStyle,
-                    )
-                }
-
-                content()
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.align(Alignment.End),
-                ) {
-                    Text(
-                        text = formatTextMessageMetadata(message, timeFormatter),
-                        fontFamily = BitchatFontFamily,
-                    )
-                    if (isSelf && message.isPrivate) {
-                        message.deliveryStatus?.let { status ->
-                            Spacer(Modifier.width(4.dp))
-                            DeliveryStatusIcon(status = status)
-                        }
-                    }
-                }
-            }
+            content()
         }
     }
 }

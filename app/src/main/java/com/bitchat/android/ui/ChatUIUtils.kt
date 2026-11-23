@@ -17,7 +17,6 @@ import com.bitchat.android.ui.theme.BASE_FONT_SIZE
 import com.bitchat.android.ui.theme.BitchatPalette
 import com.bitchat.android.ui.theme.ChatVisualTokens
 import com.bitchat.android.ui.theme.colorForPeer
-import java.text.SimpleDateFormat
 import java.util.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -29,9 +28,6 @@ import kotlinx.coroutines.withContext
 
 /** Opacity applied to the `#abcd` disambiguation suffix so the readable name dominates. */
 internal const val SUFFIX_ALPHA = ChatVisualTokens.SenderSuffixAlpha
-
-/** Compact transcript timestamp; seconds add noise without helping conversation scanning. */
-internal const val CHAT_TIMESTAMP_PATTERN = "HH:mm"
 
 /** Background opacity for a mention chip referring to somebody else. */
 internal const val MENTION_CHIP_ALPHA = ChatVisualTokens.HighlightAlpha
@@ -61,39 +57,30 @@ fun getRSSIColor(rssi: Int): Color {
     }
 }
 
-/** Thin space (U+2009) separating a display name from its `#abcd` disambiguation suffix. */
-internal const val SUFFIX_THIN_SPACE = " "
-
 /**
- * Build the sender label shown above the first message of a group.
+ * Build the sender label shown above the first message of a group in a channel.
  *
- * Renders `@name` plus a dimmed `#abcd` suffix, separated by a thin space. The name carries
- * a `nickname_click` annotation for everyone except yourself.
+ * WeChat-style: the plain nickname only, no `@`, no `#abcd` suffix, in small grey text.
+ * DMs never show a label (the transcript has no name inside or above a DM bubble), so
+ * callers must not invoke this for private messages. The name carries a `nickname_click`
+ * annotation for everyone except yourself, so tapping it still mentions the sender.
  */
-fun formatTextMessageSender(
+fun formatChannelSenderLabel(
     message: BitchatMessage,
-    currentUserNickname: String,
-    myPeerID: String,
-    palette: BitchatPalette
+    isSelf: Boolean,
+    labelColor: Color
 ): AnnotatedString {
     val builder = AnnotatedString.Builder()
-    val isSelf = message.isFromSelf(currentUserNickname, myPeerID)
-    val senderColor = if (isSelf) {
-        palette.accentOrange
-    } else {
-        colorForPeer(peerIdentityForMessage(message), palette)
-    }
-    val senderWeight = FontWeight.SemiBold
-    val (baseName, suffix) = splitSuffix(message.sender)
+    val (baseName, _) = splitSuffix(message.sender)
 
     builder.pushStyle(
         SpanStyle(
-            color = senderColor,
-            fontSize = ChatVisualTokens.SenderFontSize,
-            fontWeight = senderWeight
+            color = labelColor,
+            // Smaller than the 14.sp body, like the group nickname in WeChat.
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Normal
         )
     )
-    builder.append("@")
     val nicknameStart = builder.length
     builder.append(truncateNickname(baseName))
     val nicknameEnd = builder.length
@@ -107,106 +94,16 @@ fun formatTextMessageSender(
     }
     builder.pop()
 
-    if (suffix.isNotEmpty()) {
-        builder.append(SUFFIX_THIN_SPACE)
-        builder.pushStyle(
-            SpanStyle(
-                color = senderColor.copy(alpha = SUFFIX_ALPHA),
-                fontSize = ChatVisualTokens.SenderFontSize,
-                fontWeight = FontWeight.Normal
-            )
-        )
-        builder.append(suffix)
-        builder.pop()
-    }
-
     return builder.toAnnotatedString()
 }
 
 /**
- * Build the compact timestamp and optional proof-of-work label.
- *
- * Used standalone by media rows; text messages get the same span appended inline to the end of
- * their body via [appendBodyTimestamp].
- */
-fun formatTextMessageMetadata(
-    message: BitchatMessage,
-    timeFormatter: SimpleDateFormat = SimpleDateFormat(CHAT_TIMESTAMP_PATTERN, Locale.getDefault())
-): AnnotatedString {
-    val builder = AnnotatedString.Builder()
-    builder.pushStyle(
-        SpanStyle(
-            color = Color.Gray.copy(alpha = 0.7f),
-            fontSize = (BASE_FONT_SIZE - 4).sp
-        )
-    )
-    builder.append(timeFormatter.format(message.timestamp))
-    message.powDifficulty?.takeIf { it > 0 }?.let { bits ->
-        builder.append(" ⛨${bits}b")
-    }
-    builder.pop()
-    return builder.toAnnotatedString()
-}
-
-/**
- * Append the timestamp (and optional PoW difficulty) directly after the message body so it
- * trails the final words rather than occupying its own column.
- *
- * Deliberately carries no click annotation: the timestamp is decoration, and making it
- * tappable would create dead zones inside the message body.
- */
-private fun appendTimestampText(
-    builder: AnnotatedString.Builder,
-    message: BitchatMessage,
-    timeFormatter: SimpleDateFormat
-) {
-    builder.append("  ")
-    builder.append(timeFormatter.format(message.timestamp))
-    message.powDifficulty?.takeIf { it > 0 }?.let { bits ->
-        builder.append(" ⛨${bits}b")
-    }
-}
-
-private fun appendBodyTimestamp(
-    builder: AnnotatedString.Builder,
-    message: BitchatMessage,
-    palette: BitchatPalette,
-    timeFormatter: SimpleDateFormat,
-) {
-    builder.pushStyle(
-        SpanStyle(
-            color = palette.textTertiary,
-            fontSize = ChatVisualTokens.SystemTimeFontSize,
-            fontWeight = FontWeight.Normal,
-        )
-    )
-    appendTimestampText(builder, message, timeFormatter)
-    builder.pop()
-}
-
-private fun appendMutedTimestamp(
-    builder: AnnotatedString.Builder,
-    message: BitchatMessage,
-    contentColor: Color,
-    timeFormatter: SimpleDateFormat,
-) {
-    builder.pushStyle(
-        SpanStyle(
-            color = contentColor.copy(alpha = ChatVisualTokens.MutedTextAlpha),
-            fontSize = ChatVisualTokens.SystemTimeFontSize,
-            fontWeight = FontWeight.Normal,
-        )
-    )
-    appendTimestampText(builder, message, timeFormatter)
-    builder.pop()
-}
-
-/**
- * Build the message body: neutral text with mention/URL/geohash accents, followed by an inline
- * trailing timestamp.
+ * Build the message body: neutral text with mention/URL/geohash accents.
  *
  * Body text is intentionally neutral rather than peer-colored. Colour is reserved for
- * `@names`, which is what makes a busy channel scannable.
+ * `@names`, which is what makes a busy channel scannable. No timestamp is appended:
+ * WeChat shows the time only as a centered separator between message groups, never
+ * inside a bubble, so the body is just the message.
  */
 fun formatTextMessageBody(
     message: BitchatMessage,
@@ -215,8 +112,6 @@ fun formatTextMessageBody(
     contentColor: Color,
     linkColor: Color,
     mentionPeerIdentities: Map<String, PeerIdentity> = emptyMap(),
-    timeFormatter: SimpleDateFormat = SimpleDateFormat(CHAT_TIMESTAMP_PATTERN, Locale.getDefault()),
-    includeTimestamp: Boolean = true
 ): AnnotatedString {
     val builder = AnnotatedString.Builder()
 
@@ -230,22 +125,18 @@ fun formatTextMessageBody(
         mentionPeerIdentities = mentionPeerIdentities,
     )
 
-    if (includeTimestamp) {
-        appendBodyTimestamp(builder, message, palette, timeFormatter)
-    }
     return builder.toAnnotatedString()
 }
 
 /**
- * Build a system / background-action line, e.g. `// Tor started. Routing all chats… 11:09:56`.
+ * Build a system / background-action line, e.g. `Tor started. Routing all chats…`.
  *
- * The `//` prefix reads as machine narration in a monospace context and is far quieter than
- * the previous `* italic asterisk *` treatment, which competed with real messages.
+ * WeChat-style: plain centered narration, no `//` prefix and no timestamp. The time of a
+ * system line is shown by the date separator above it, like any other message.
  */
 fun formatSystemMessage(
     message: BitchatMessage,
     contentColor: Color,
-    timeFormatter: SimpleDateFormat = SimpleDateFormat(CHAT_TIMESTAMP_PATTERN, Locale.getDefault())
 ): AnnotatedString {
     val builder = AnnotatedString.Builder()
     builder.pushStyle(
@@ -255,82 +146,38 @@ fun formatSystemMessage(
             fontWeight = FontWeight.Medium,
         )
     )
-    builder.append("// ")
     builder.append(message.content)
     builder.pop()
 
-    appendMutedTimestamp(builder, message, contentColor, timeFormatter)
     return builder.toAnnotatedString()
 }
 
 /**
- * Header line for media (image / audio / file) rows.
+ * Header line for media (image / audio / file) rows in Matrix mode.
  *
- * Matches the text-message treatment: `@name#abcd` with no angle brackets, followed by an
- * inline trailing timestamp. Media rows have no body text to trail, so the timestamp sits on
- * the same line as the name.
+ * WeChat-style: in a channel this is the plain grey nickname above the media; in a DM it
+ * is empty (no name, no timestamp). System rows render as the plain system line.
  */
 fun formatMessageHeaderAnnotatedString(
     message: BitchatMessage,
     currentUserNickname: String,
     myPeerID: String,
-    palette: BitchatPalette,
     contentColor: Color,
-    timeFormatter: SimpleDateFormat = SimpleDateFormat(CHAT_TIMESTAMP_PATTERN, Locale.getDefault()),
     includeSender: Boolean = true
 ): AnnotatedString {
-    val builder = AnnotatedString.Builder()
-    val isSelf = message.isFromSelf(currentUserNickname, myPeerID)
-
     if (message.sender == "system") {
-        return formatSystemMessage(message, contentColor, timeFormatter)
+        return formatSystemMessage(message, contentColor)
     }
 
-    if (includeSender) {
-        val baseColor = if (isSelf) {
-            palette.accentOrange
-        } else {
-            colorForPeer(peerIdentityForMessage(message), palette)
-        }
-        val (baseName, suffix) = splitSuffix(message.sender)
-
-        builder.pushStyle(
-            SpanStyle(
-                color = baseColor,
-                fontSize = ChatVisualTokens.SenderFontSize,
-                fontWeight = FontWeight.SemiBold,
-            )
-        )
-        builder.append("@")
-        val nicknameStart = builder.length
-        builder.append(truncateNickname(baseName))
-        val nicknameEnd = builder.length
-        if (!isSelf) {
-            builder.addStringAnnotation(
-                tag = "nickname_click",
-                annotation = (message.originalSender ?: message.sender),
-                start = nicknameStart,
-                end = nicknameEnd
-            )
-        }
-        builder.pop()
-
-        if (suffix.isNotEmpty()) {
-            builder.append(SUFFIX_THIN_SPACE)
-            builder.pushStyle(
-                SpanStyle(
-                    color = baseColor.copy(alpha = SUFFIX_ALPHA),
-                    fontSize = ChatVisualTokens.SenderFontSize,
-                    fontWeight = FontWeight.Normal,
-                )
-            )
-            builder.append(suffix)
-            builder.pop()
-        }
+    if (!includeSender || message.isPrivate) {
+        return AnnotatedString("")
     }
 
-    appendMutedTimestamp(builder, message, contentColor, timeFormatter)
-    return builder.toAnnotatedString()
+    return formatChannelSenderLabel(
+        message = message,
+        isSelf = message.isFromSelf(currentUserNickname, myPeerID),
+        labelColor = contentColor.copy(alpha = ChatVisualTokens.MutedTextAlpha),
+    )
 }
 
 /**

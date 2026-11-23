@@ -4,7 +4,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
-import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
@@ -46,11 +45,10 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bitchat.android.ui.theme.BitchatFontFamily
 import androidx.annotation.DrawableRes
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.foundation.layout.RowScope
 import com.bitchat.android.R
 import com.bitchat.android.core.ui.component.button.BitChatBrandButton
-import com.bitchat.android.core.ui.component.button.CloseButton
 import com.bitchat.android.net.ArtiTorManager
 import com.bitchat.android.net.TorMode
 import com.bitchat.android.ui.theme.BitchatMotion
@@ -315,76 +313,6 @@ internal fun TorAwareHeaderIcon(
     }
 }
 
-/**
- * Noise session status for private-chat headers.
- *
- * Same visual language as the main header's Tor-aware globe: tint cross-fades between states,
- * and a soft radial glow pulse while the handshake is in flight. The glyph itself is the open
- * lock until a session is established (or fails), then the closed lock — both share the same
- * baseline so a [Crossfade] reads as the shackle settling shut rather than an icon swap.
- */
-@Composable
-fun NoiseSessionIcon(
-    sessionState: String?,
-    modifier: Modifier = Modifier
-) {
-    val palette = LocalBitchatPalette.current
-    val colorScheme = MaterialTheme.colorScheme
-
-    val (targetTint, isProgress, contentDescription) = when {
-        sessionState == "handshaking" -> Triple(
-            palette.accentOrange,
-            true,
-            stringResource(R.string.cd_handshake_in_progress)
-        )
-        sessionState == "established" -> Triple(
-            colorScheme.primary,
-            false,
-            stringResource(R.string.cd_encrypted)
-        )
-        sessionState?.startsWith("failed") == true -> Triple(
-            colorScheme.error,
-            false,
-            stringResource(R.string.cd_handshake_failed)
-        )
-        else -> Triple(
-            // Not yet started — quiet grey open lock.
-            colorScheme.onSurfaceVariant,
-            false,
-            stringResource(R.string.cd_ready_for_handshake)
-        )
-    }
-
-    // Closed once the handshake resolves (success or failure); open while idle or in flight.
-    val lockIconRes = when {
-        sessionState == "established" || sessionState?.startsWith("failed") == true ->
-            R.drawable.ic_spec_lock
-        else -> R.drawable.ic_spec_lock_open
-    }
-
-    // Match the tint wash so open → closed and grey → orange → green land together.
-    val lockTransitionMs = 480
-
-    val animatedTint by animateColorAsState(
-        targetValue = targetTint,
-        animationSpec = tween(durationMillis = lockTransitionMs, easing = FastOutSlowInEasing),
-        label = "noiseSessionTint"
-    )
-
-    Crossfade(
-        targetState = lockIconRes,
-        animationSpec = tween(durationMillis = lockTransitionMs, easing = FastOutSlowInEasing),
-        modifier = modifier,
-        label = "noiseLockGlyph"
-    ) { iconRes ->
-        TorAwareHeaderIcon(
-            painter = painterResource(iconRes),
-            tint = animatedTint,
-            isProgress = isProgress,
-            contentDescription = contentDescription,
-        )
-    }
-}
 
 /**
  * Reachability glyph for a conversation, drawn from the same spec set the main header uses.
@@ -404,65 +332,67 @@ internal fun conversationTransportIcon(
     else -> R.drawable.ic_spec_routed
 }
 
+/** One entry in a conversation header's "..." menu. */
+data class ConversationHeaderMenuItem(
+    val label: String,
+    val onClick: () -> Unit,
+)
+
 /**
  * The shared chrome for a conversation header — private chats and channels alike.
  *
- * Deliberately built from the same tokens as [MainHeader] rather than from `TopAppBar`: identical
- * height, identical 12/8.dp edge insets, the leading glyph in a [HeaderTapTarget]-sized slot so it
- * lands exactly where the brand mark does, the same -6.dp optical nudge pulling the title toward
- * that glyph, and the same [HeaderTextSize]. Anything less and the header visibly shifts as you
- * move between the main timeline and a conversation.
- *
- * Actions are right-aligned and unweighted, so a long title yields space to them rather than
- * pushing them off screen.
+ * WeChat-style: a back arrow on the left, the centered title, and a "..." on the right.
+ * Everything that used to sit in the header row as icons (favorite star, close, verification,
+ * sidebar) lives behind the "..." menu instead, so the bar stays quiet and the actions stay
+ * reachable. Height and edge insets match the main header, so moving between the main
+ * timeline and a conversation does not shift the bar.
  */
 @Composable
 fun ConversationHeader(
-    @DrawableRes leadingIconRes: Int,
-    leadingIconTint: Color,
     title: String,
+    onBackClick: () -> Unit,
     modifier: Modifier = Modifier,
     onTitleClick: (() -> Unit)? = null,
-    leadingContentDescription: String? = null,
-    actions: @Composable RowScope.() -> Unit = {}
+    menuItems: List<ConversationHeaderMenuItem> = emptyList()
 ) {
     val colorScheme = MaterialTheme.colorScheme
+    var menuExpanded by remember { mutableStateOf(false) }
 
     Row(
         modifier = modifier
             .fillMaxWidth()
             .height(ChatHeaderHeight)
-            .padding(start = HeaderInsetStart, end = HeaderInsetEnd),
+            .padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            modifier = Modifier.weight(1f),
-            verticalAlignment = Alignment.CenterVertically
+        HeaderIconButton(
+            onClick = onBackClick,
+            contentDescription = stringResource(R.string.back)
         ) {
-            Box(
-                modifier = Modifier.size(HeaderTapTarget),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    painter = painterResource(leadingIconRes),
-                    contentDescription = leadingContentDescription,
-                    modifier = Modifier.size(HeaderIconSize),
-                    tint = leadingIconTint
-                )
-            }
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = null,
+                modifier = Modifier.size(HeaderIconSize),
+                tint = colorScheme.onSurface
+            )
+        }
 
-            // Same optical correction as the main header: the 44.dp tap target leaves more gap
-            // than the design wants between glyph and label.
+        Box(
+            modifier = Modifier.weight(1f),
+            contentAlignment = Alignment.Center
+        ) {
             Text(
                 text = title,
                 style = MaterialTheme.typography.bodyMedium,
                 fontSize = HeaderTextSize,
                 fontWeight = FontWeight.Medium,
-                color = colorScheme.primary,
+                color = colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
                 modifier = Modifier
-                    .offset(x = (-6).dp)
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp)
                     .then(
                         if (onTitleClick != null) {
                             Modifier
@@ -476,40 +406,36 @@ fun ConversationHeader(
             )
         }
 
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
-            content = actions
-        )
+        Box {
+            HeaderIconButton(
+                onClick = { menuExpanded = true },
+                contentDescription = stringResource(R.string.cd_more_options)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.MoreHoriz,
+                    contentDescription = null,
+                    modifier = Modifier.size(HeaderIconSize),
+                    tint = colorScheme.onSurface
+                )
+            }
+            DropdownMenu(
+                expanded = menuExpanded,
+                onDismissRequest = { menuExpanded = false }
+            ) {
+                menuItems.forEach { item ->
+                    DropdownMenuItem(
+                        text = { Text(item.label) },
+                        onClick = {
+                            menuExpanded = false
+                            item.onClick()
+                        }
+                    )
+                }
+            }
+        }
     }
 }
 
-/** An action slot in a [ConversationHeader], matching the main header's icon buttons. */
-@Composable
-fun ConversationHeaderAction(
-    onClick: () -> Unit,
-    contentDescription: String?,
-    modifier: Modifier = Modifier,
-    content: @Composable () -> Unit
-) = HeaderIconButton(
-    onClick = onClick,
-    contentDescription = contentDescription,
-    modifier = modifier,
-    content = content
-)
-
-/** A read-only status slot matching the footprint of [ConversationHeaderAction]. */
-@Composable
-fun ConversationHeaderStatus(
-    modifier: Modifier = Modifier,
-    content: @Composable () -> Unit
-) {
-    Box(
-        modifier = modifier.size(HeaderTapTarget),
-        contentAlignment = Alignment.Center,
-        content = { content() }
-    )
-}
 
 @Composable
 fun NicknameEditor(
@@ -691,20 +617,24 @@ private fun ChannelHeader(
     onLeaveChannel: () -> Unit,
     onSidebarClick: () -> Unit
 ) {
-    val colorScheme = MaterialTheme.colorScheme
-
-    // No back affordance: the close action on the right is the way out, exactly as in a private
-    // chat. Leaving the channel outright lives on its row in the network sheet, so it does not
-    // need a second, easily-mistaken home next to the exit.
+    // Back arrow exits the channel; the title opens the network sheet. Leaving the channel,
+    // which used to be reachable only from the channel's row in the network sheet, now also
+    // lives behind the "..." menu.
     ConversationHeader(
-        leadingIconRes = R.drawable.ic_spec_chat_bubbles,
-        leadingIconTint = colorScheme.primary,
-        leadingContentDescription = null,
         title = "#$channel",
-        onTitleClick = onSidebarClick
-    ) {
-        CloseButton(onClick = onBackClick)
-    }
+        onBackClick = onBackClick,
+        onTitleClick = onSidebarClick,
+        menuItems = listOf(
+            ConversationHeaderMenuItem(
+                label = stringResource(R.string.cd_leave_channel),
+                onClick = onLeaveChannel
+            ),
+            ConversationHeaderMenuItem(
+                label = stringResource(R.string.your_network),
+                onClick = onSidebarClick
+            ),
+        )
+    )
 }
 
 @Composable

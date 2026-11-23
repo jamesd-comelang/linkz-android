@@ -22,15 +22,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
-import com.bitchat.android.ui.theme.BitchatFontFamily
 import com.bitchat.android.mesh.MeshService
 import com.bitchat.android.model.BitchatMessage
 import com.bitchat.android.model.BitchatMessageType
 import androidx.compose.material3.ColorScheme
 import com.bitchat.android.core.ui.component.text.AnnotatedClickableText
-import com.bitchat.android.ui.theme.LocalBitchatPalette
-import java.text.SimpleDateFormat
 
 @Composable
 fun ImageMessageItem(
@@ -39,7 +37,6 @@ fun ImageMessageItem(
     currentUserNickname: String,
     meshService: MeshService,
     colorScheme: ColorScheme,
-    timeFormatter: SimpleDateFormat,
     onNicknameClick: ((String) -> Unit)?,
     onMessageLongPress: ((BitchatMessage) -> Unit)?,
     onCancelTransfer: ((BitchatMessage) -> Unit)?,
@@ -48,7 +45,6 @@ fun ImageMessageItem(
     showSender: Boolean = true,
     bubbles: Boolean = false
 ) {
-    val palette = LocalBitchatPalette.current
     val path = message.content.trim()
     // Bubble mode wraps the image in the same tinted shell as text bubbles; Matrix mode keeps
     // the flat header-plus-card layout.
@@ -71,7 +67,6 @@ fun ImageMessageItem(
             currentUserNickname = currentUserNickname,
             myPeerID = meshService.myPeerID,
             showSender = showSender,
-            timeFormatter = timeFormatter,
             onNicknameClick = onNicknameClick,
             onLongPress = { onMessageLongPress?.invoke(message) },
             modifier = modifier,
@@ -102,27 +97,27 @@ fun ImageMessageItem(
             message = message,
             currentUserNickname = currentUserNickname,
             myPeerID = meshService.myPeerID,
-            palette = palette,
             contentColor = colorScheme.onSurface,
-            timeFormatter = timeFormatter,
             includeSender = showSender
         )
-        AnnotatedClickableText(
-            text = headerText,
-            annotationTags = listOf("nickname_click"),
-            onAnnotationClick = { tag, item ->
-                if (tag == "nickname_click" && onNicknameClick != null) {
-                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                    onNicknameClick.invoke(item)
-                    true
-                } else {
-                    false
-                }
-            },
-            onLongPress = { onMessageLongPress?.invoke(message) },
-            fontFamily = BitchatFontFamily,
-            color = colorScheme.onSurface,
-        )
+        if (headerText.isNotEmpty()) {
+            AnnotatedClickableText(
+                text = headerText,
+                annotationTags = listOf("nickname_click"),
+                onAnnotationClick = { tag, item ->
+                    if (tag == "nickname_click" && onNicknameClick != null) {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onNicknameClick.invoke(item)
+                        true
+                    } else {
+                        false
+                    }
+                },
+                onLongPress = { onMessageLongPress?.invoke(message) },
+                fontFamily = FontFamily.Default,
+                color = colorScheme.onSurface,
+            )
+        }
 
         if (bmp != null) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
@@ -139,7 +134,7 @@ fun ImageMessageItem(
                 )
             }
         } else {
-            Text(text = stringResource(com.bitchat.android.R.string.image_unavailable), fontFamily = BitchatFontFamily, color = Color.Gray)
+            Text(text = stringResource(com.bitchat.android.R.string.image_unavailable), fontFamily = FontFamily.Default, color = Color.Gray)
         }
     }
 }
@@ -158,7 +153,7 @@ private fun ImageMessageCard(
     onLongPress: (() -> Unit)?,
 ) {
     if (bmp == null) {
-        Text(text = stringResource(com.bitchat.android.R.string.image_unavailable), fontFamily = BitchatFontFamily, color = Color.Gray)
+        Text(text = stringResource(com.bitchat.android.R.string.image_unavailable), fontFamily = FontFamily.Default, color = Color.Gray)
         return
     }
     val img = bmp.asImageBitmap()

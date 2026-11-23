@@ -15,16 +15,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
-import com.bitchat.android.ui.theme.BitchatFontFamily
 import com.bitchat.android.R
 import com.bitchat.android.core.ui.component.text.AnnotatedClickableText
 import com.bitchat.android.mesh.MeshService
 import com.bitchat.android.model.BitchatMessage
 import androidx.compose.material3.ColorScheme
-import com.bitchat.android.ui.theme.LocalBitchatPalette
-import java.text.SimpleDateFormat
 import androidx.compose.ui.platform.LocalContext
 
 @Composable
@@ -33,7 +31,6 @@ fun AudioMessageItem(
     currentUserNickname: String,
     meshService: MeshService,
     colorScheme: ColorScheme,
-    timeFormatter: SimpleDateFormat,
     onNicknameClick: ((String) -> Unit)?,
     onMessageLongPress: ((BitchatMessage) -> Unit)?,
     onCancelTransfer: ((BitchatMessage) -> Unit)?,
@@ -41,7 +38,6 @@ fun AudioMessageItem(
     showSender: Boolean = true,
     bubbles: Boolean = false
 ) {
-    val palette = LocalBitchatPalette.current
     val context = LocalContext.current
     val liveMessageIDs by com.bitchat.android.features.voice.LiveVoiceManager
         .getInstance(context).liveMessageIDs.collectAsState()
@@ -64,7 +60,6 @@ fun AudioMessageItem(
             currentUserNickname = currentUserNickname,
             myPeerID = meshService.myPeerID,
             showSender = showSender,
-            timeFormatter = timeFormatter,
             onNicknameClick = onNicknameClick,
             onLongPress = { onMessageLongPress?.invoke(message) },
             modifier = modifier,
@@ -111,28 +106,28 @@ fun AudioMessageItem(
             message = message,
             currentUserNickname = currentUserNickname,
             myPeerID = meshService.myPeerID,
-            palette = palette,
             contentColor = colorScheme.onSurface,
-            timeFormatter = timeFormatter,
             includeSender = showSender
         )
         val haptic = LocalHapticFeedback.current
-        AnnotatedClickableText(
-            text = headerText,
-            annotationTags = listOf("nickname_click"),
-            onAnnotationClick = { tag, item ->
-                if (tag == "nickname_click" && onNicknameClick != null) {
-                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                    onNicknameClick.invoke(item)
-                    true
-                } else {
-                    false
-                }
-            },
-            onLongPress = { onMessageLongPress?.invoke(message) },
-            fontFamily = BitchatFontFamily,
-            color = colorScheme.onSurface,
-        )
+        if (headerText.isNotEmpty()) {
+            AnnotatedClickableText(
+                text = headerText,
+                annotationTags = listOf("nickname_click"),
+                onAnnotationClick = { tag, item ->
+                    if (tag == "nickname_click" && onNicknameClick != null) {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onNicknameClick.invoke(item)
+                        true
+                    } else {
+                        false
+                    }
+                },
+                onLongPress = { onMessageLongPress?.invoke(message) },
+                fontFamily = FontFamily.Default,
+                color = colorScheme.onSurface,
+            )
+        }
 
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (isLive) {

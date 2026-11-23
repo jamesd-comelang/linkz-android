@@ -7,9 +7,11 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
@@ -88,7 +90,15 @@ fun VoiceRecordButton(
      * Invoked whenever a recording ends without producing a file — permission denied, recorder
      * failure, the button being torn down mid-capture, or a deliberate slide-to-cancel.
      */
-    onCancel: () -> Unit = {}
+    onCancel: () -> Unit = {},
+    /**
+     * Voice-mode rendering: instead of the press-and-hold disc, the whole area is the press
+     * target, with [holdToTalkContent] (the "Hold to Talk" label, or the timer + waveform
+     * while recording) centered inside it. The gesture is identical — only the surface
+     * changes — so slide-to-cancel and the arm delay behave the same either way.
+     */
+    holdToTalk: Boolean = false,
+    holdToTalkContent: @Composable (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
@@ -142,16 +152,12 @@ fun VoiceRecordButton(
         }
     }
 
-    // Same disc, same sizing and the same press feedback as the camera and send buttons.
-    ComposerActionSurface(
-        isActive = isRecording || isCapturing || courtesyActive,
-        isPressed = isCapturing,
-        activeColor = if (courtesyActive && !isRecording && !isCapturing) {
-            androidx.compose.ui.graphics.Color(0xFFFFB300)
-        } else androidx.compose.ui.graphics.Color.Unspecified,
-        modifier = modifier
-            .onGloballyPositioned { buttonCoords = it }
-            .pointerInput(Unit) {
+    // The press-and-hold gesture, shared by both renderings: the disc in text mode and the
+    // full-width hold-to-talk bar in voice mode. Attached to whichever surface is showing, so
+    // the finger tracking and slide-to-cancel coordinates stay in root space either way.
+    val recordGesture = Modifier
+        .onGloballyPositioned { buttonCoords = it }
+        .pointerInput(Unit) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
                     // Guard 1: ignore anything arriving before the swap animation settled.
@@ -268,12 +274,32 @@ fun VoiceRecordButton(
                     ampJob = null
                 }
             }
-    ) { tint ->
-        Icon(
-            imageVector = Icons.Filled.Mic,
-            contentDescription = stringResource(com.bitchat.android.R.string.cd_record_voice),
-            tint = tint,
-            modifier = Modifier.size(ComposerIconSize)
-        )
+
+    if (holdToTalk) {
+        // Voice mode: the whole bar is the press target, with the caller's label or
+        // recording readout centered inside it. No disc — the bar itself is the button.
+        Box(
+            modifier = modifier.then(recordGesture),
+            contentAlignment = Alignment.Center
+        ) {
+            holdToTalkContent?.invoke()
+        }
+    } else {
+        // Same disc, same sizing and the same press feedback as the camera and send buttons.
+        ComposerActionSurface(
+            isActive = isRecording || isCapturing || courtesyActive,
+            isPressed = isCapturing,
+            activeColor = if (courtesyActive && !isRecording && !isCapturing) {
+                androidx.compose.ui.graphics.Color(0xFFFFB300)
+            } else androidx.compose.ui.graphics.Color.Unspecified,
+            modifier = modifier.then(recordGesture)
+        ) { tint ->
+            Icon(
+                imageVector = Icons.Filled.Mic,
+                contentDescription = stringResource(com.bitchat.android.R.string.cd_record_voice),
+                tint = tint,
+                modifier = Modifier.size(ComposerIconSize)
+            )
+        }
     }
 }

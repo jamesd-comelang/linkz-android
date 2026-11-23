@@ -4,6 +4,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.bitchat.android.model.BitchatMessage
 import com.bitchat.android.ui.theme.ChatVisualTokens
+import java.util.Calendar
+import java.util.Date
 
 /**
  * Consecutive-message grouping for the chat surface.
@@ -32,6 +34,25 @@ object MessageGrouping {
      * a reply an hour later is a new thought, not a continuation.
      */
     const val GROUPING_WINDOW_MS: Long = 5 * 60 * 1000L
+
+    /**
+     * Gap above which a WeChat-style centered date/time separator is shown above a message,
+     * even when the sender has not changed. A new calendar day always gets one, however
+     * short the gap.
+     */
+    fun shouldShowDateSeparator(previous: BitchatMessage?, current: BitchatMessage): Boolean {
+        if (previous == null) return true
+        val elapsed = current.timestamp.time - previous.timestamp.time
+        if (elapsed > GROUPING_WINDOW_MS) return true
+        return !isSameDay(previous.timestamp, current.timestamp)
+    }
+
+    private fun isSameDay(first: Date, second: Date): Boolean {
+        val firstCal = Calendar.getInstance().apply { time = first }
+        val secondCal = Calendar.getInstance().apply { time = second }
+        return firstCal.get(Calendar.YEAR) == secondCal.get(Calendar.YEAR) &&
+            firstCal.get(Calendar.DAY_OF_YEAR) == secondCal.get(Calendar.DAY_OF_YEAR)
+    }
 
     private const val SYSTEM_SENDER = "system"
 
