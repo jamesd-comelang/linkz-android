@@ -442,9 +442,13 @@ private fun LinkzSearchField(
             focusedIndicatorColor = Color.Transparent,
             unfocusedIndicatorColor = Color.Transparent
         ),
+        // WeChat's search field is ~36dp tall (was the 56dp TextField
+        // default + 16dp padding = 72dp); the explicit height overrides
+        // the TextField's internal 56dp minimum.
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 8.dp)
+            .padding(horizontal = 12.dp, vertical = 4.dp)
+            .height(36.dp)
             .semantics { contentDescription = "Search chats" }
     )
 }

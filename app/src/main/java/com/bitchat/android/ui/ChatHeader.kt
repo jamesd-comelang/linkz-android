@@ -60,7 +60,7 @@ import com.bitchat.android.ui.theme.LocalBitchatPalette
  */
 
 /** Height of the chat top bar. Taller than the old 42.dp so 44.dp tap targets fit properly. */
-val ChatHeaderHeight = 52.dp
+val ChatHeaderHeight = 48.dp
 
 /**
  * The single visible glyph size used by every icon in the top bar.

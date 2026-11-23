@@ -210,7 +210,7 @@ class CombinedVisualTransformation(private val transformations: List<VisualTrans
  * Roomy on purpose. The composer is a primary target that gets hit constantly, and the previous
  * 44.dp felt cramped.
  */
-private val ComposerMinHeight = 52.dp
+private val ComposerMinHeight = 40.dp
 
 /**
  * Composer field corner radius.
@@ -415,7 +415,10 @@ fun MessageInput(
     val latestOnSendVoiceNote = rememberUpdatedState(onSendVoiceNote)
 
     Column(
-        modifier = modifier.padding(horizontal = 12.dp, vertical = 10.dp)
+        // WeChat's input bar is ~58dp tall in total; the 44dp voice toggle
+        // sets the row height, so 8dp vertical padding gives a 60dp bar
+        // (was 72dp with a 52dp field and 10dp padding).
+        modifier = modifier.padding(horizontal = 12.dp, vertical = 8.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -466,7 +469,7 @@ fun MessageInput(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 18.dp, end = 12.dp, top = 15.dp, bottom = 15.dp)
+                        .padding(start = 18.dp, end = 12.dp, top = 9.dp, bottom = 9.dp)
                 ) {
                     // Always keep the text field mounted to retain focus and avoid IME collapse,
                     // even in voice mode — the hold-to-talk bar covers it, and its text and
