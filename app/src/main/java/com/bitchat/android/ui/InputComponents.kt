@@ -307,7 +307,6 @@ internal fun ComposerActionSurface(
 }
 
 @Composable
-@Composable
 fun MessageInput(
     value: TextFieldValue,
     onValueChange: (TextFieldValue) -> Unit,
