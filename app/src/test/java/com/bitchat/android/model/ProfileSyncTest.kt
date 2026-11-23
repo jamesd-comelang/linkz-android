@@ -83,7 +83,7 @@ class ProfileSyncTest {
     @Test
     fun `announce round trip preserves version hash and nickname`() {
         val hash = ProfileSync.sha256Hex(samplePhoto())
-        val encoded = ProfileSync.encodeAnnounce(4L, hash, "Alice")
+        val encoded = ProfileSync.encodeAnnounce(4L, hash, "Alice")!!
         val decoded = ProfileSync.decodeAnnounce(encoded)!!
         assertEquals(4L, decoded.version)
         assertEquals(hash, decoded.photoHashHex)
@@ -92,7 +92,7 @@ class ProfileSyncTest {
 
     @Test
     fun `announce without photo round trips with null hash`() {
-        val encoded = ProfileSync.encodeAnnounce(1L, null, "Bob")
+        val encoded = ProfileSync.encodeAnnounce(1L, null, "Bob")!!
         val decoded = ProfileSync.decodeAnnounce(encoded)!!
         assertEquals(1L, decoded.version)
         assertNull(decoded.photoHashHex)
