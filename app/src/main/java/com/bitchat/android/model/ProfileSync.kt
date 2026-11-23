@@ -30,6 +30,44 @@ import java.util.UUID
  * Caps are deliberate: a 512px JPEG is far below [MAX_PHOTO_BYTES], and anything
  * larger or malformed is dropped, never stored.
  */
+
+/**
+ * Callback surface the mesh layer ([com.bitchat.android.mesh.MessageHandler])
+ * uses to talk to profile sync. The manager owns the decisions (is this
+ * advertisement newer? what do we reply?); the mesh layer owns the BLE send.
+ *
+ * Lives in `model` (not `services`) so the shared mesh code compiled into the
+ * wear module can depend on it: the concrete manager pulls in Nostr and the
+ * phone's DataManager, neither of which the watch ships.
+ */
+interface ProfileSyncHandler {
+    /** Request bytes to send when the advertised profile is newer than cache, else null. */
+    fun requestBytesForAdvertised(peerID: String, version: Long, photoHashHex: String?): ByteArray?
+
+    /**
+     * Reply to an incoming PROFILE_REQUEST: (PROFILE_RESPONSE, bytes) when our
+     * profile is newer than [cachedVersion], (PROFILE_ANNOUNCE, bytes) otherwise.
+     * Null when no reply can be built.
+     */
+    fun replyForRequest(peerID: String, cachedVersion: Long): Pair<NoisePayloadType, ByteArray>?
+
+    /** A PROFILE_ANNOUNCE payload arrived (BLE or Nostr). */
+    fun onProfileAnnounce(peerID: String, announce: ProfileSync.ProfileAnnounce)
+
+    /** A whole PROFILE_RESPONSE payload arrived (BLE path). */
+    fun onProfileResponse(peerID: String, responseBytes: ByteArray)
+
+    /** One PROFILE_RESPONSE_CHUNK arrived (Nostr path). */
+    fun onProfileChunk(peerID: String, chunkBytes: ByteArray)
+
+    /**
+     * Ask a peer for its profile over Nostr (used when no BLE Noise session
+     * exists with the peer). No-op when the cache is current or a fetch for
+     * this version is already in flight.
+     */
+    fun fetchOverNostr(peerID: String, version: Long, photoHashHex: String?)
+}
+
 object ProfileSync {
 
     /** Largest photo accepted, in bytes. A 512px JPEG at quality 85 is well under this. */

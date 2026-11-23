@@ -51,7 +51,14 @@ class MeshCore(
         val readReceiptInterceptor: ((String, String) -> Boolean)? = null,
         val onReadReceiptSent: ((String) -> Unit)? = null,
         val announcementNicknameProvider: (() -> String?)? = null,
-        val leavePayloadProvider: (() -> ByteArray)? = null
+        val leavePayloadProvider: (() -> ByteArray)? = null,
+        /**
+         * Local profile (version, photo hash) advertised in announcements.
+         * Supplied by the phone-side service that creates this MeshCore; null
+         * on the watch, where profile sync is not wired and announcements
+         * carry no profile version, as before.
+         */
+        val profileVersionAndHashProvider: (() -> Pair<Long, ByteArray?>)? = null
     )
 
     private val peerManager = PeerManager()
@@ -121,6 +128,20 @@ class MeshCore(
     private val ownsGossipManager: Boolean = sharedGossipManager == null
 
     var delegate: MeshDelegate? = null
+
+    /**
+     * Profile sync handler (phone only). Set by the app-side service that
+     * creates this MeshCore; null on the watch, where profile packets are
+     * dropped silently. The setter forwards to the MessageHandler, so it
+     * works no matter when the service sets it — setupDelegates() runs in
+     * init, before any service can set this. Kept as a plain property (not a
+     * constructor argument) so the watch's MeshCore construction is unchanged.
+     */
+    var profileSyncHandler: com.bitchat.android.model.ProfileSyncHandler? = null
+        set(value) {
+            field = value
+            messageHandler.profileSyncHandler = value
+        }
 
     private var isActive = false
 
@@ -216,10 +237,10 @@ class MeshCore(
     private fun setupDelegates() {
         // Profile sync: the mesh layer hands the manager the BLE send for
         // profile requests, and the manager decides what to fetch/reply.
-        // Kept in setupDelegates so every MeshCore gets the handler, whatever
-        // transport (BLE / Wi-Fi Aware) created it.
-        messageHandler.profileSyncHandler =
-            com.bitchat.android.services.ProfileSyncManager.getInstance(context.applicationContext)
+        // The handler is injected by the phone-side service (see
+        // [profileSyncHandler]); the watch leaves it null, so its
+        // MessageHandler drops profile packets silently.
+        messageHandler.profileSyncHandler = profileSyncHandler
         peerManager.delegate = object : PeerManagerDelegate {
             override fun onPeerListUpdated(peerIDs: List<String>) {
                 try { com.bitchat.android.services.AppStateStore.setTransportPeers(transport.id, peerIDs) } catch (_: Exception) { }
@@ -828,16 +849,14 @@ class MeshCore(
     /**
      * The profile (version, photo hash) the local announcements advertise.
      * Read fresh on every announce so a profile change is picked up by the
-     * next periodic re-announce without any extra plumbing.
+     * next periodic re-announce without any extra plumbing. The values come
+     * from [Hooks.profileVersionAndHashProvider], supplied by the phone-side
+     * service — MeshCore itself must not touch the phone's DataManager, which
+     * the wear module does not ship.
      */
     private fun profileVersionAndHash(): Pair<Long, ByteArray?> {
         return try {
-            val dataManager = com.bitchat.android.ui.DataManager(context.applicationContext)
-            val hashHex = dataManager.getProfilePhotoHashHex()
-            val hashBytes = hashHex?.let {
-                com.bitchat.android.services.ContactIdentityResolver.bytesFromHex(it)
-            }
-            dataManager.getProfileVersion() to hashBytes
+            hooks.profileVersionAndHashProvider?.invoke() ?: (0L to null)
         } catch (_: Exception) {
             0L to null
         }

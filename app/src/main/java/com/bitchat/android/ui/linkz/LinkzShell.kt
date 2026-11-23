@@ -801,7 +801,8 @@ private fun LinkzChatsTab(
             items(filtered, key = { it.conversationID }) { summary ->
                 LinkzSwipeableChatRow(
                     summary = summary,
-                    viewModel = viewModel
+                    viewModel = viewModel,
+                    photo = peerPhotos[summary.conversationID]
                 )
             }
             if (filtered.isEmpty() && joinedChannels.isEmpty()) {
@@ -841,7 +842,10 @@ private fun LinkzChatsTab(
 @Composable
 private fun LinkzSwipeableChatRow(
     summary: com.bitchat.android.ui.ConversationSummary,
-    viewModel: ChatViewModel
+    viewModel: ChatViewModel,
+    // Cached profile photo of this peer (from background profile sync),
+    // passed down from the Chats tab, which collects the photos flow.
+    photo: androidx.compose.ui.graphics.ImageBitmap? = null
 ) {
     val scope = rememberCoroutineScope()
     val dismissState = rememberSwipeToDismissBoxState(
@@ -915,7 +919,7 @@ private fun LinkzSwipeableChatRow(
             unreadCount = summary.unreadCount,
             avatarColor = linkzAvatarColor(summary.conversationID),
             isMuted = summary.isMuted,
-            photo = peerPhotos[summary.conversationID],
+            photo = photo,
             onClick = { viewModel.showPrivateChatSheet(summary.conversationID) }
         )
     }
@@ -1139,8 +1143,9 @@ private fun LinkzContactsTab(
                 items(favorites, key = { it.id.lowercase() }) { contact ->
                     LinkzContactRow(
                         contact,
+                        onClick = { selectedContactId = contact.id },
                         photo = peerPhotos[contact.id]
-                    ) { selectedContactId = contact.id }
+                    )
                 }
             }
             if (others.isNotEmpty()) {
@@ -1148,8 +1153,9 @@ private fun LinkzContactsTab(
                 items(others, key = { it.id.lowercase() }) { contact ->
                     LinkzContactRow(
                         contact,
+                        onClick = { selectedContactId = contact.id },
                         photo = peerPhotos[contact.id]
-                    ) { selectedContactId = contact.id }
+                    )
                 }
             }
             if (blocked.isNotEmpty()) {
@@ -1157,8 +1163,9 @@ private fun LinkzContactsTab(
                 items(blocked, key = { it.id.lowercase() }) { contact ->
                     LinkzContactRow(
                         contact,
+                        onClick = { selectedContactId = contact.id },
                         photo = peerPhotos[contact.id]
-                    ) { selectedContactId = contact.id }
+                    )
                 }
             }
             if (contacts.isEmpty()) {

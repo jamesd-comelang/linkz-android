@@ -3,6 +3,7 @@ package com.bitchat.android.nostr
 import android.util.Base64
 import android.util.Log
 import com.bitchat.android.mesh.MeshPacketUtils
+import com.bitchat.android.model.NoisePayload
 import com.bitchat.android.model.PrivateMessagePacket
 import com.bitchat.android.model.NoisePayloadType
 import com.bitchat.android.protocol.BitchatPacket
@@ -49,7 +50,10 @@ object NostrEmbeddedBitChat {
                 signature = null,
                 ttl = 0u
             )
-            encodeBitchatPacketForNostr(packet)
+            // Same `bitchat1:` envelope as encodePMForNostr below; there is no
+            // shared packet-to-string helper, so the two lines are repeated here.
+            val data = packet.toBinaryData() ?: return null
+            return "bitchat1:" + base64URLEncode(data)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to encode profile packet for Nostr: ${e.message}")
             null

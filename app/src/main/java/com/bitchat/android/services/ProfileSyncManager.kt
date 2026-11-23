@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.bitchat.android.model.NoisePayloadType
 import com.bitchat.android.model.ProfileSync
+import com.bitchat.android.model.ProfileSyncHandler
 import com.bitchat.android.nostr.NostrEmbeddedBitChat
 import com.bitchat.android.nostr.NostrTransport
 import com.bitchat.android.ui.DataManager
@@ -17,39 +18,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
-
-/**
- * Callback surface the mesh layer ([com.bitchat.android.mesh.MessageHandler])
- * uses to talk to profile sync. The manager owns the decisions (is this
- * advertisement newer? what do we reply?); the mesh layer owns the BLE send.
- */
-interface ProfileSyncHandler {
-    /** Request bytes to send when the advertised profile is newer than cache, else null. */
-    fun requestBytesForAdvertised(peerID: String, version: Long, photoHashHex: String?): ByteArray?
-
-    /**
-     * Reply to an incoming PROFILE_REQUEST: (PROFILE_RESPONSE, bytes) when our
-     * profile is newer than [cachedVersion], (PROFILE_ANNOUNCE, bytes) otherwise.
-     * Null when no reply can be built.
-     */
-    fun replyForRequest(peerID: String, cachedVersion: Long): Pair<NoisePayloadType, ByteArray>?
-
-    /** A PROFILE_ANNOUNCE payload arrived (BLE or Nostr). */
-    fun onProfileAnnounce(peerID: String, announce: ProfileSync.ProfileAnnounce)
-
-    /** A whole PROFILE_RESPONSE payload arrived (BLE path). */
-    fun onProfileResponse(peerID: String, responseBytes: ByteArray)
-
-    /** One PROFILE_RESPONSE_CHUNK arrived (Nostr path). */
-    fun onProfileChunk(peerID: String, chunkBytes: ByteArray)
-
-    /**
-     * Ask a peer for its profile over Nostr (used when no BLE Noise session
-     * exists with the peer). No-op when the cache is current or a fetch for
-     * this version is already in flight.
-     */
-    fun fetchOverNostr(peerID: String, version: Long, photoHashHex: String?)
-}
 
 /**
  * Background profile sync (WeChat-style lazy avatar sync, serverless).

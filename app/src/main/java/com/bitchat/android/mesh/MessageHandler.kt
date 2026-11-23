@@ -37,7 +37,7 @@ class MessageHandler(private val myPeerID: String, private val appContext: andro
 
     // Profile sync (WeChat-style lazy avatar sync). Set by MeshCore; null means
     // profile packets are dropped silently (old clients behave the same way).
-    var profileSyncHandler: com.bitchat.android.services.ProfileSyncHandler? = null
+    var profileSyncHandler: com.bitchat.android.model.ProfileSyncHandler? = null
 
     // Reference to PacketProcessor for recursive packet handling
     var packetProcessor: PacketProcessor? = null
