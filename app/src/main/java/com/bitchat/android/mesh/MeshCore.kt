@@ -214,6 +214,12 @@ class MeshCore(
     }
 
     private fun setupDelegates() {
+        // Profile sync: the mesh layer hands the manager the BLE send for
+        // profile requests, and the manager decides what to fetch/reply.
+        // Kept in setupDelegates so every MeshCore gets the handler, whatever
+        // transport (BLE / Wi-Fi Aware) created it.
+        messageHandler.profileSyncHandler =
+            com.bitchat.android.services.ProfileSyncManager.getInstance(context.applicationContext)
         peerManager.delegate = object : PeerManagerDelegate {
             override fun onPeerListUpdated(peerIDs: List<String>) {
                 try { com.bitchat.android.services.AppStateStore.setTransportPeers(transport.id, peerIDs) } catch (_: Exception) { }
@@ -819,6 +825,24 @@ class MeshCore(
         }
     }
 
+    /**
+     * The profile (version, photo hash) the local announcements advertise.
+     * Read fresh on every announce so a profile change is picked up by the
+     * next periodic re-announce without any extra plumbing.
+     */
+    private fun profileVersionAndHash(): Pair<Long, ByteArray?> {
+        return try {
+            val dataManager = com.bitchat.android.ui.DataManager(context.applicationContext)
+            val hashHex = dataManager.getProfilePhotoHashHex()
+            val hashBytes = hashHex?.let {
+                com.bitchat.android.services.ContactIdentityResolver.bytesFromHex(it)
+            }
+            dataManager.getProfileVersion() to hashBytes
+        } catch (_: Exception) {
+            0L to null
+        }
+    }
+
     fun sendBroadcastAnnounce() {
         scope.launch {
             val nickname = hooks.announcementNicknameProvider?.invoke()
@@ -832,7 +856,11 @@ class MeshCore(
                 Log.e("MeshCore", "No signing public key available for announcement")
                 return@launch
             }
-            val announcement = IdentityAnnouncement.forLocalPeer(nickname, staticKey, signingKey)
+            val (profileVersion, profilePhotoHash) = profileVersionAndHash()
+            val announcement = IdentityAnnouncement.forLocalPeer(
+                nickname, staticKey, signingKey,
+                profileVersion = profileVersion, profilePhotoHash = profilePhotoHash
+            )
             val tlvPayload = buildAnnouncementPayload(announcement, nickname) ?: return@launch
             val announcePacket = BitchatPacket(
                 type = MessageType.ANNOUNCE.value,
@@ -853,7 +881,11 @@ class MeshCore(
             ?: myPeerID
         val staticKey = encryptionService.getStaticPublicKey() ?: return
         val signingKey = encryptionService.getSigningPublicKey() ?: return
-        val announcement = IdentityAnnouncement.forLocalPeer(nickname, staticKey, signingKey)
+        val (profileVersion, profilePhotoHash) = profileVersionAndHash()
+        val announcement = IdentityAnnouncement.forLocalPeer(
+            nickname, staticKey, signingKey,
+            profileVersion = profileVersion, profilePhotoHash = profilePhotoHash
+        )
         val tlvPayload = buildAnnouncementPayload(announcement, nickname) ?: return
         val packet = BitchatPacket(
             type = MessageType.ANNOUNCE.value,
