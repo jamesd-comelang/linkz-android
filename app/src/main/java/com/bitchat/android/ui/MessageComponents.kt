@@ -517,6 +517,9 @@ fun MessageItem(
                     PeerAvatar(
                         name = message.sender,
                         color = colorForPeer(peerIdentityForMessage(message), palette),
+                        // Square like the home screen's LinkzAvatar, not circular.
+                        shape = RoundedCornerShape(6.dp),
+                        fontFamily = FontFamily.Default
                     )
                     Spacer(Modifier.width(8.dp))
                 } else if (isFailed) {
@@ -545,6 +548,9 @@ fun MessageItem(
                     PeerAvatar(
                         name = currentUserNickname,
                         color = palette.accentOrange,
+                        // Square like the home screen's LinkzAvatar, not circular.
+                        shape = RoundedCornerShape(6.dp),
+                        fontFamily = FontFamily.Default
                     )
                 } else if (isFailed) {
                     Spacer(Modifier.width(8.dp))

@@ -6,6 +6,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import com.bitchat.android.ui.theme.BitchatFontFamily
 import com.bitchat.android.R
+import android.os.Build
 import android.text.format.DateUtils
 import android.util.Log
 import androidx.compose.animation.AnimatedVisibility
@@ -1666,11 +1667,44 @@ private fun convertRSSIToSignalStrength(rssi: Int?): Int {
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+/**
+ * A DM opened over a channel timeline stays a bottom sheet, as before.
+ * A DM opened from the home screen is a full-screen page instead — see
+ * [PrivateChatContent] with `isFullScreen = true` in the shell.
+ */
 fun PrivateChatSheet(
     isPresented: Boolean,
     peerID: String,
     viewModel: ChatViewModel,
     onDismiss: () -> Unit
+) {
+    if (!isPresented) return
+    val sheetState = rememberModalBottomSheetState(
+        skipPartiallyExpanded = true
+    )
+    BitchatBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+    ) {
+        PrivateChatContent(
+            peerID = peerID,
+            viewModel = viewModel,
+            onDismiss = onDismiss
+        )
+    }
+}
+
+/**
+ * The DM conversation itself: header, message list, input. Rendered
+ * full-screen from the home shell (WeChat-style page) or inside a bottom
+ * sheet when a DM opens over a channel timeline.
+ */
+@Composable
+fun PrivateChatContent(
+    peerID: String,
+    viewModel: ChatViewModel,
+    onDismiss: () -> Unit,
+    isFullScreen: Boolean = false
 ) {
     val colorScheme = MaterialTheme.colorScheme
     val privateChats by viewModel.privateChats.collectAsStateWithLifecycle()
@@ -1737,16 +1771,27 @@ fun PrivateChatSheet(
         if (fingerprint != null) favoritePeers.contains(fingerprint) else viewModel.isFavorite(peerID)
     }
 
-    val sheetState = rememberModalBottomSheetState(
-        skipPartiallyExpanded = true
-    )
-
-    if (isPresented) {
-        BitchatBottomSheet(
-            onDismissRequest = onDismiss,
-            sheetState = sheetState,
-        ) {
-            Box(modifier = Modifier.fillMaxSize()) {
+    // Full-screen (home → DM): paint the background and sit below the
+    // status bar, like ChatScreen does. Inside a sheet the sheet itself
+    // provides the background and insets, so the box stays bare.
+    val boxModifier = if (isFullScreen) {
+        Modifier
+            .fillMaxSize()
+            .background(colorScheme.background)
+            .windowInsetsPadding(WindowInsets.statusBars)
+            .then(
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    Modifier.windowInsetsPadding(
+                        WindowInsets.ime.union(WindowInsets.navigationBars)
+                    )
+                } else {
+                    Modifier.windowInsetsPadding(WindowInsets.navigationBars)
+                }
+            )
+    } else {
+        Modifier.fillMaxSize()
+    }
+    Box(modifier = boxModifier) {
                 // WeChat-style long-press menu for DM messages. Until
                 // now this was a no-op stub, so DMs had no Copy,
                 // Forward, or Delete at all.
@@ -1882,6 +1927,4 @@ fun PrivateChatSheet(
                     )
                 }
             }
-        }
-    }
 }

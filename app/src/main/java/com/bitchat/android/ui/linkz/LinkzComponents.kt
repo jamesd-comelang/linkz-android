@@ -179,7 +179,7 @@ fun LinkzBottomNav(
 ) {
     NavigationBar(
         modifier = modifier,
-        containerColor = MaterialTheme.colorScheme.surface,
+        containerColor = MaterialTheme.colorScheme.background,
         tonalElevation = 0.dp
     ) {
         for (tab in LinkzTab.entries) {

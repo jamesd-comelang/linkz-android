@@ -63,8 +63,10 @@ val DarkBitchatPalette = BitchatPalette(
 val LightBitchatPalette = BitchatPalette(
     inputOutline = Color(0xFFCFD3D1),
     inputOutlineFocused = Color(0xFF8E9490),
-    inputSurface = Color(0xFFFAFAFA),
-    inputSurfaceFocused = Color(0xFFF2F2F2),
+    // Pure white, like WeChat's input bar: the field sits on a white bar,
+    // so any off-white fill reads as a grey smudge.
+    inputSurface = Color.White,
+    inputSurfaceFocused = Color.White,
     inputButton = Color(0xFFE8E8E8),
     textTertiary = Color(0xFF757F75),
     accentOrange = Color(0xFFFF9500),
