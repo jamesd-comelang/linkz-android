@@ -37,15 +37,19 @@ class ProfileSyncManagerTest {
      * order, which is exactly how this test failed in CI run 45500386871.
      * Clearing the prefs as well keeps the nickname/version state
      * order-independent.
+     * NOTE: a @Volatile companion var compiles to a STATIC field on the
+     * OUTER class, not on the Companion — reflecting on Companion throws
+     * NoSuchFieldException (CI run 45503915531). Verified with a local
+     * repro of the same companion pattern before using this target.
      */
     @Before
     fun setUp() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         context.getSharedPreferences("bitchat_prefs", Context.MODE_PRIVATE)
             .edit().clear().commit()
-        val instanceField = ProfileSyncManager.Companion::class.java
+        val instanceField = ProfileSyncManager::class.java
             .getDeclaredField("INSTANCE").apply { isAccessible = true }
-        instanceField.set(ProfileSyncManager.Companion, null)
+        instanceField.set(null, null)
     }
 
     @Test
