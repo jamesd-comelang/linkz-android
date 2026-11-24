@@ -28,14 +28,12 @@ require(
 // one versionName/versionCode, so the SHA is what tells builds apart
 // (shown on the Me page and the Debug Logs screen). GitHub Actions sets
 // GITHUB_SHA; fall back to its first 7 chars when git is unavailable.
+// NOTE: Project.exec was removed in Gradle 9, so this uses providers.exec.
 val gitCommitSha: String = runCatching {
-    val output = java.io.ByteArrayOutputStream()
-    exec {
+    providers.exec {
         commandLine("git", "rev-parse", "--short", "HEAD")
-        standardOutput = output
         isIgnoreExitValue = true
-    }
-    output.toString(Charsets.UTF_8).trim()
+    }.standardOutput.asText.orNull?.trim()
 }.getOrNull().orEmpty().ifBlank {
     providers.environmentVariable("GITHUB_SHA").orNull?.take(7) ?: "unknown"
 }
