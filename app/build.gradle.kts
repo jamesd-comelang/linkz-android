@@ -24,6 +24,22 @@ require(
     "BITCHAT_GITHUB_RELEASE_CERT_SHA256 must be a SHA-256 certificate fingerprint"
 }
 
+// Short git commit SHA identifying this exact build. Debug APKs all share
+// one versionName/versionCode, so the SHA is what tells builds apart
+// (shown on the Me page and the Debug Logs screen). GitHub Actions sets
+// GITHUB_SHA; fall back to its first 7 chars when git is unavailable.
+val gitCommitSha: String = runCatching {
+    val output = java.io.ByteArrayOutputStream()
+    exec {
+        commandLine("git", "rev-parse", "--short", "HEAD")
+        standardOutput = output
+        isIgnoreExitValue = true
+    }
+    output.toString(Charsets.UTF_8).trim()
+}.getOrNull().orEmpty().ifBlank {
+    providers.environmentVariable("GITHUB_SHA").orNull?.take(7) ?: "unknown"
+}
+
 android {
     namespace = "com.bitchat.android"
     compileSdk = libs.versions.compileSdk.get().toInt()
@@ -40,6 +56,11 @@ android {
             "String",
             "GITHUB_RELEASE_CERT_SHA256",
             "\"$normalizedGithubReleaseCertSha256\""
+        )
+        buildConfigField(
+            "String",
+            "GIT_COMMIT",
+            "\"$gitCommitSha\""
         )
 
         testInstrumentationRunner = if (releaseUiTests) {

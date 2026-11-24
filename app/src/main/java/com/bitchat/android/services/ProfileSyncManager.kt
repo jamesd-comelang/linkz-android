@@ -149,14 +149,17 @@ class ProfileSyncManager private constructor(
         if (!isStale(peerID, announce.version, announce.photoHashHex)) return
         // The announce itself carries the nickname: cache the nickname now so
         // the name updates even if the photo fetch fails or is still running.
-        // Keep the OLD photo hash in the record until the photo actually
-        // arrives — otherwise the version+hash would look current and a
-        // failed fetch would never be retried.
+        // Keep the OLD version (and photo hash) in the record until the photo
+        // actually arrives — the stored version is what the next fetch
+        // request claims to have, and claiming the announced version makes
+        // the sender answer with just another announce instead of the photo
+        // (replyForRequest only sends PROFILE_RESPONSE when its version is
+        // newer than the claimed one).
         val cached = cachedRecord(peerID)
         if (cached == null || cached.nickname != announce.nickname) {
             val existingPhoto = dataManager.getProfilePhotoBytesForPeer(peerID)
             dataManager.savePeerProfile(
-                peerID, announce.nickname, announce.version,
+                peerID, announce.nickname, cached?.version ?: 0L,
                 cached?.photoHashHex, existingPhoto
             )
             _profileUpdated.value += 1

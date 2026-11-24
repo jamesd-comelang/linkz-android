@@ -54,6 +54,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -66,6 +67,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
+import com.bitchat.android.BuildConfig
 import com.bitchat.android.geohash.ChannelID
 import com.bitchat.android.ui.AboutSheet
 import com.bitchat.android.ui.ChatScreen
@@ -1493,6 +1495,18 @@ private fun LinkzMeTab(
                 "Not connected"
             },
             onClick = { viewModel.showMeshPeerList() }
+        )
+        // Build identifier: debug APKs share one versionName/versionCode,
+        // so the git commit is what tells builds apart.
+        Spacer(modifier = Modifier.weight(1f))
+        Text(
+            text = "Linkz ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}) · ${BuildConfig.GIT_COMMIT}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 16.dp)
         )
     }
     if (showStatusSheet) {

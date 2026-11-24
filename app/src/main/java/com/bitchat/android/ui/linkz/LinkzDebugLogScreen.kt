@@ -36,6 +36,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.bitchat.android.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -45,8 +46,9 @@ import kotlinx.coroutines.withContext
  * phone without adb. Reads the log with `logcat -d` (an app can read its
  * own logs, no permission needed) and shows the last 500 lines.
  *
- * Copy copies everything shown. Clear only clears this view, not the
- * phone's log buffer — Android does not let a normal app wipe it.
+ * Copy copies everything shown, with the build ID on the first line so a
+ * pasted log says which build it came from. Clear only clears this view,
+ * not the phone's log buffer — Android does not let a normal app wipe it.
  * Refresh pulls fresh lines. Search filters the shown lines by text
  * (case-insensitive); Copy then copies only the matching lines.
  */
@@ -74,6 +76,12 @@ fun LinkzDebugLogScreen(onBack: () -> Unit) {
         displayedText = logText
     }
 
+    // Build identifier: debug APKs share one versionName/versionCode,
+    // so the git commit is what tells builds apart. It is shown below
+    // and prepended to copied text, so a pasted log carries the build ID.
+    val buildIdLine =
+        "Linkz ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}) · ${BuildConfig.GIT_COMMIT}"
+
     fun load() {
         scope.launch {
             loading = true
@@ -100,7 +108,7 @@ fun LinkzDebugLogScreen(onBack: () -> Unit) {
                     Context.CLIPBOARD_SERVICE
                 ) as ClipboardManager
                 clipboard.setPrimaryClip(
-                    ClipData.newPlainText("Linkz debug log", displayedText)
+                    ClipData.newPlainText("Linkz debug log", buildIdLine + "\n" + displayedText)
                 )
                 copied = true
             }) {
@@ -157,6 +165,12 @@ fun LinkzDebugLogScreen(onBack: () -> Unit) {
             } else {
                 "This app's own logs, last 500 lines. Clear only clears this view."
             },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 16.dp)
+        )
+        Text(
+            text = buildIdLine,
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 16.dp)
