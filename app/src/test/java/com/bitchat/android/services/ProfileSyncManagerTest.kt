@@ -10,6 +10,7 @@ import java.util.Date
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -27,6 +28,25 @@ import org.robolectric.RobolectricTestRunner
 class ProfileSyncManagerTest {
 
     private val peerID = "a".repeat(64)
+
+    /**
+     * The manager is a process-wide singleton bound to the context that
+     * first created it, and each Robolectric test gets a fresh Application
+     * (own SharedPreferences). Without resetting it, ownVersion() would
+     * read a previous test's prefs — 0 instead of 2 — depending on run
+     * order, which is exactly how this test failed in CI run 45500386871.
+     * Clearing the prefs as well keeps the nickname/version state
+     * order-independent.
+     */
+    @Before
+    fun setUp() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        context.getSharedPreferences("bitchat_prefs", Context.MODE_PRIVATE)
+            .edit().clear().commit()
+        val instanceField = ProfileSyncManager.Companion::class.java
+            .getDeclaredField("INSTANCE").apply { isAccessible = true }
+        instanceField.set(ProfileSyncManager.Companion, null)
+    }
 
     @Test
     fun `announce with no cache keeps old version so the fetch requests the photo`() {
