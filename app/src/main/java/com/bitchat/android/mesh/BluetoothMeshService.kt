@@ -657,7 +657,12 @@ class BluetoothMeshService(private val context: Context) : TransportBridgeServic
                 gossipSyncManager.handleRequestSync(fromPeer, req)
             }
         }
-        
+
+        // Profile sync: the mesh layer hands the manager the BLE send for
+        // profile requests, and the manager decides what to fetch/reply.
+        messageHandler.profileSyncHandler =
+            com.bitchat.android.services.ProfileSyncManager.getInstance(context.applicationContext)
+
         // BluetoothConnectionManager delegates
         connectionManager.delegate = object : BluetoothConnectionManagerDelegate {
         override fun onPacketReceived(

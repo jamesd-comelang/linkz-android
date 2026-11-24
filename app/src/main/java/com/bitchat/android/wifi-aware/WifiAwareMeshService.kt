@@ -179,11 +179,26 @@ class WifiAwareMeshService(private val context: Context) : MeshService, Transpor
                 announcementNicknameProvider = {
                     try { com.bitchat.android.services.NicknameProvider.getNickname(context, myPeerID) } catch (_: Exception) { null }
                 },
+                profileVersionAndHashProvider = {
+                    try {
+                        val dataManager = com.bitchat.android.ui.DataManager(context.applicationContext)
+                        val hashHex = dataManager.getProfilePhotoHashHex()
+                        val hashBytes = hashHex?.let {
+                            com.bitchat.android.services.ContactIdentityResolver.bytesFromHex(it)
+                        }
+                        dataManager.getProfileVersion() to hashBytes
+                    } catch (_: Exception) { 0L to null }
+                },
                 leavePayloadProvider = {
                     (delegate?.getNickname() ?: myPeerID).toByteArray(Charsets.UTF_8)
                 }
             )
         )
+        // Profile sync: hand the mesh layer the manager so profile packets
+        // arriving over this transport are answered (the watch leaves the
+        // handler null and drops them silently).
+        meshCore.profileSyncHandler =
+            com.bitchat.android.services.ProfileSyncManager.getInstance(context.applicationContext)
         fragmentingSender = FragmentingPacketSender(serviceScope, meshCore.fragmentManager, TAG)
     }
 

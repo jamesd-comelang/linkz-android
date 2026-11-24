@@ -26,7 +26,15 @@ enum class NoisePayloadType(val value: UByte) {
     VERIFY_RESPONSE(0x11u),     // Verification response
     FILE_TRANSFER(0x20u),
     /** Authenticated capabilities + Ed25519 binding for the current Noise generation. */
-    PEER_STATE(0x21u);
+    PEER_STATE(0x21u),
+    /** Profile sync (non-urgent background fetch): ask a peer for its profile. */
+    PROFILE_REQUEST(0x30u),
+    /** Profile sync: a peer's (version, photo hash, nickname) advertisement. */
+    PROFILE_ANNOUNCE(0x31u),
+    /** Profile sync: the full profile (nickname + photo bytes) in one payload. */
+    PROFILE_RESPONSE(0x32u),
+    /** Profile sync: one chunk of a PROFILE_RESPONSE, for the Nostr path. */
+    PROFILE_RESPONSE_CHUNK(0x33u);
 
 
     companion object {

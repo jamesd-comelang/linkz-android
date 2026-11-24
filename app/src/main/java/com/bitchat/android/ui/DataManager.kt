@@ -45,7 +45,11 @@ class DataManager(private val context: Context) {
     }
     
     fun saveNickname(nickname: String) {
+        val previous = prefs.getString("nickname", null)
         prefs.edit().putString("nickname", nickname).apply()
+        // The nickname is part of the synced profile: a change makes the
+        // local profile newer, so peers re-fetch it in the background.
+        if (previous != nickname) bumpProfileVersion()
     }
 
     // MARK: - Profile Setup (WeChat-style nickname + photo at first run)
@@ -69,9 +73,22 @@ class DataManager(private val context: Context) {
                 bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, out)
             }
             prefs.edit().putString("avatar_path", "avatar.jpg").apply()
+            // The photo is part of the synced profile: a new photo makes the
+            // local profile newer, so peers re-fetch it in the background.
+            refreshProfilePhotoHash()
             true
         } catch (_: Exception) {
             false
+        }
+    }
+
+    /** Raw JPEG bytes of the own profile photo, or null when there is no photo. */
+    fun getProfilePhotoBytes(): ByteArray? {
+        if (prefs.getString("avatar_path", null) == null) return null
+        return try {
+            context.openFileInput("avatar.jpg").use { it.readBytes() }
+        } catch (_: Exception) {
+            null
         }
     }
 
@@ -118,6 +135,128 @@ class DataManager(private val context: Context) {
         }
     }
     
+    // MARK: - Profile Sync (WeChat-style lazy avatar sync)
+
+    /**
+     * Own profile version. Bumped on every nickname or photo change; peers
+     * compare it against their cached copy and fetch only when it is newer.
+     * Starts at 0, so a peer with no cached copy always fetches once.
+     */
+    fun getProfileVersion(): Long {
+        return prefs.getLong("profile_version", 0L)
+    }
+
+    fun bumpProfileVersion(): Long {
+        val next = getProfileVersion() + 1
+        prefs.edit().putLong("profile_version", next).apply()
+        return next
+    }
+
+    /** Lowercase hex SHA-256 of the own profile photo JPEG, or null with no photo. */
+    fun getProfilePhotoHashHex(): String? {
+        return prefs.getString("profile_photo_hash", null)
+    }
+
+    /**
+     * Recompute the photo hash from the saved JPEG. Bumps the profile version
+     * only when the hash actually changed, so re-saving the same photo does
+     * not make peers re-fetch it.
+     */
+    fun refreshProfilePhotoHash(): String? {
+        val bytes = getProfilePhotoBytes()
+        val hash = bytes?.let { com.bitchat.android.model.ProfileSync.sha256Hex(it) }
+        val previous = getProfilePhotoHashHex()
+        if (hash == null) {
+            prefs.edit().remove("profile_photo_hash").apply()
+        } else {
+            prefs.edit().putString("profile_photo_hash", hash).apply()
+        }
+        if (hash != previous) bumpProfileVersion()
+        return hash
+    }
+
+    /** One peer's cached profile (nickname + version + photo hash). The photo itself lives in a file. */
+    data class PeerProfileRecord(
+        val peerID: String,
+        val nickname: String,
+        val version: Long,
+        val photoHashHex: String?,
+        val updatedAtMs: Long
+    )
+
+    private fun peerProfileKey(peerID: String) = "peer_profile_$peerID"
+
+    private fun peerPhotoFileName(peerID: String) = "peer_photo_$peerID.jpg"
+
+    fun loadPeerProfile(peerID: String): PeerProfileRecord? {
+        val json = prefs.getString(peerProfileKey(peerID), null) ?: return null
+        return try {
+            gson.fromJson(json, PeerProfileRecord::class.java)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /**
+     * Cache a peer's fetched profile. Photo bytes are stored in a file so the
+     * (up to 256 KiB) JPEG never sits in SharedPreferences. A null [photoBytes]
+     * keeps any previously cached photo file (the peer has no photo).
+     */
+    fun savePeerProfile(
+        peerID: String,
+        nickname: String,
+        version: Long,
+        photoHashHex: String?,
+        photoBytes: ByteArray?
+    ) {
+        if (photoBytes != null) {
+            try {
+                context.openFileOutput(peerPhotoFileName(peerID), Context.MODE_PRIVATE).use { out ->
+                    out.write(photoBytes)
+                }
+            } catch (_: Exception) {
+                return
+            }
+        } else {
+            // The peer has no photo now: drop any previously cached one, or the
+            // old photo would keep showing next to the new (photoless) profile.
+            try {
+                context.deleteFile(peerPhotoFileName(peerID))
+            } catch (_: Exception) {
+            }
+        }
+        val record = PeerProfileRecord(peerID, nickname, version, photoHashHex, System.currentTimeMillis())
+        prefs.edit().putString(peerProfileKey(peerID), gson.toJson(record)).apply()
+    }
+
+    /** Decoded cached photo of a peer, or null when none was ever fetched. */
+    fun loadPeerPhotoBitmap(peerID: String): android.graphics.Bitmap? {
+        return try {
+            context.openFileInput(peerPhotoFileName(peerID)).use { input ->
+                android.graphics.BitmapFactory.decodeStream(input)
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /** Raw cached photo bytes of a peer, or null when none was ever fetched. */
+    fun getProfilePhotoBytesForPeer(peerID: String): ByteArray? {
+        return try {
+            context.openFileInput(peerPhotoFileName(peerID)).use { it.readBytes() }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    fun deletePeerProfile(peerID: String) {
+        prefs.edit().remove(peerProfileKey(peerID)).apply()
+        try {
+            context.deleteFile(peerPhotoFileName(peerID))
+        } catch (_: Exception) {
+        }
+    }
+
     // MARK: - Geohash Channel Persistence
     
     fun loadLastGeohashChannel(): String? {
@@ -417,5 +556,13 @@ class DataManager(private val context: Context) {
         _geohashBlockedUsers.clear()
         _channelMembers.clear()
         prefs.edit().clear().apply()
+        // Peer profile records live in prefs (cleared above); the cached
+        // photos are files, so delete them explicitly.
+        try {
+            context.fileList()
+                .filter { it.startsWith("peer_photo_") }
+                .forEach { context.deleteFile(it) }
+        } catch (_: Exception) {
+        }
     }
 }

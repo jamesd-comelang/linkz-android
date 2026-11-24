@@ -389,6 +389,45 @@ class NostrDirectMessageHandler(
                     Log.w(TAG, "Failed to decode Nostr file transfer from $conversationID")
                 }
             }
+            // Profile sync (lazy avatar sync): only for peers we know. The
+            // sender's Nostr pubkey must resolve to a mesh peer ID (a
+            // favorite) — conversationID here is a `nostr_<hex>` key, not the
+            // peer ID, and strangers resolve to null and are ignored.
+            // Background, low priority; malformed payloads are dropped.
+            NoisePayloadType.PROFILE_REQUEST -> {
+                val peerID = com.bitchat.android.favorites.FavoritesPersistenceService.shared
+                    .findPeerIDForNostrPubkey(senderPubkey) ?: return
+                val cachedVersion =
+                    com.bitchat.android.model.ProfileSync.decodeRequest(payload.data)
+                        ?: return
+                val profileSync = com.bitchat.android.services.ProfileSyncManager.getInstance(application)
+                profileSync.replyOverNostr(peerID, cachedVersion)
+            }
+
+            NoisePayloadType.PROFILE_ANNOUNCE -> {
+                val peerID = com.bitchat.android.favorites.FavoritesPersistenceService.shared
+                    .findPeerIDForNostrPubkey(senderPubkey) ?: return
+                val announce =
+                    com.bitchat.android.model.ProfileSync.decodeAnnounce(payload.data)
+                        ?: return
+                val profileSync = com.bitchat.android.services.ProfileSyncManager.getInstance(application)
+                profileSync.onProfileAnnounce(peerID, announce)
+            }
+
+            NoisePayloadType.PROFILE_RESPONSE -> {
+                val peerID = com.bitchat.android.favorites.FavoritesPersistenceService.shared
+                    .findPeerIDForNostrPubkey(senderPubkey) ?: return
+                val profileSync = com.bitchat.android.services.ProfileSyncManager.getInstance(application)
+                profileSync.onProfileResponse(peerID, payload.data)
+            }
+
+            NoisePayloadType.PROFILE_RESPONSE_CHUNK -> {
+                val peerID = com.bitchat.android.favorites.FavoritesPersistenceService.shared
+                    .findPeerIDForNostrPubkey(senderPubkey) ?: return
+                val profileSync = com.bitchat.android.services.ProfileSyncManager.getInstance(application)
+                profileSync.onProfileChunk(peerID, payload.data)
+            }
+
             NoisePayloadType.VERIFY_CHALLENGE,
             NoisePayloadType.VERIFY_RESPONSE,
             NoisePayloadType.VOICE_FRAME,

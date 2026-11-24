@@ -3,6 +3,7 @@ package com.bitchat.android.nostr
 import android.util.Base64
 import android.util.Log
 import com.bitchat.android.mesh.MeshPacketUtils
+import com.bitchat.android.model.NoisePayload
 import com.bitchat.android.model.PrivateMessagePacket
 import com.bitchat.android.model.NoisePayloadType
 import com.bitchat.android.protocol.BitchatPacket
@@ -20,6 +21,45 @@ object NostrEmbeddedBitChat {
     private const val SENDER_ID_SIZE = 8
     private val secureRandom = SecureRandom()
     
+    /**
+     * Encode a profile-sync payload as a Nostr DM envelope.
+     *
+     * Like [encodePMForNostr] but for [NoisePayloadType.PROFILE_REQUEST] /
+     * PROFILE_ANNOUNCE / PROFILE_RESPONSE / PROFILE_RESPONSE_CHUNK instead of
+     * a chat message. Returns null when either peer ID is blank or encoding
+     * fails.
+     */
+    fun encodeProfilePacketForNostr(
+        type: NoisePayloadType,
+        data: ByteArray,
+        recipientPeerID: String,
+        senderPeerID: String
+    ): String? {
+        if (recipientPeerID.isEmpty() || senderPeerID.isEmpty()) return null
+        return try {
+            val payload = NoisePayload(type, data)
+            val payloadBytes = payload.encode()
+            val recipientIDHex = normalizeRecipientPeerID(recipientPeerID)
+            val packet = BitchatPacket(
+                version = 1u,
+                type = MessageType.NOISE_ENCRYPTED.value,
+                senderID = hexStringToByteArray(senderPeerID),
+                recipientID = hexStringToByteArray(recipientIDHex),
+                timestamp = System.currentTimeMillis().toULong(),
+                payload = payloadBytes,
+                signature = null,
+                ttl = 0u
+            )
+            // Same `bitchat1:` envelope as encodePMForNostr below; there is no
+            // shared packet-to-string helper, so the two lines are repeated here.
+            val data = packet.toBinaryData() ?: return null
+            return "bitchat1:" + base64URLEncode(data)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to encode profile packet for Nostr: ${e.message}")
+            null
+        }
+    }
+
     /**
      * Build a `bitchat1:` base64url-encoded BitChat packet carrying a private message for Nostr DMs.
      */

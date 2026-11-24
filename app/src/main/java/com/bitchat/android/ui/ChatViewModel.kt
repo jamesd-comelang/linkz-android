@@ -408,6 +408,13 @@ class ChatViewModel(
     val peerSessionStates: StateFlow<Map<String, String>> = state.peerSessionStates
     val peerFingerprints: StateFlow<Map<String, String>> = state.peerFingerprints
     val peerNicknames: StateFlow<Map<String, String>> = state.peerNicknames
+    // Cached profile photos of peers (background profile sync), keyed by peer ID.
+    // Loaded from DataManager's per-peer cache; refreshed whenever a peer's
+    // cached profile changes. Absent peers show the initial letter instead.
+    private val _peerPhotos =
+        MutableStateFlow<Map<String, androidx.compose.ui.graphics.ImageBitmap>>(emptyMap())
+    val peerPhotos: StateFlow<Map<String, androidx.compose.ui.graphics.ImageBitmap>> =
+        _peerPhotos.asStateFlow()
     val peerRSSI: StateFlow<Map<String, Int>> = state.peerRSSI
     val peerDirect: StateFlow<Map<String, Boolean>> = state.peerDirect
     val showAppInfo: StateFlow<Boolean> = state.showAppInfo
@@ -521,6 +528,37 @@ class ChatViewModel(
         }
         
         // Removed background location notes subscription. Notes now load only when sheet opens.
+
+        // Profile sync: reload cached peer photos whenever a peer's profile
+        // changes, and load the existing cache once at startup.
+        viewModelScope.launch {
+            try {
+                com.bitchat.android.services.ProfileSyncManager.getInstance(getApplication())
+                    .profileUpdated.collect { refreshPeerPhotos() }
+            } catch (_: Exception) { }
+        }
+        refreshPeerPhotos()
+    }
+
+    /** Reload cached peer photos from DataManager (disk) into [peerPhotos]. */
+    private fun refreshPeerPhotos() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val peerIDs = (dataManager.favoritePeers + state.connectedPeers.value).toSet()
+                val photos = peerIDs.mapNotNull { peerID ->
+                    dataManager.loadPeerPhotoBitmap(peerID)?.asImageBitmap()?.let { peerID to it }
+                }.toMap()
+                _peerPhotos.value = photos
+            } catch (_: Exception) { }
+        }
+    }
+
+    /** Opportunistic profile fetch when opening a chat with an unknown peer. */
+    fun maybeFetchPeerProfile(peerID: String) {
+        try {
+            com.bitchat.android.services.ProfileSyncManager.getInstance(getApplication())
+                .fetchIfUnknown(peerID)
+        } catch (_: Exception) { }
     }
 
     /**
@@ -688,6 +726,12 @@ class ChatViewModel(
         state.setNickname(newNickname)
         dataManager.saveNickname(newNickname)
         mesh.sendBroadcastAnnounce()
+        // A nickname change bumps the profile version: push the new version
+        // to favorites over Nostr so they fetch the updated profile.
+        try {
+            com.bitchat.android.services.ProfileSyncManager.getInstance(getApplication())
+                .announceOwnProfileChange()
+        } catch (_: Exception) { }
     }
     
     /**
@@ -1369,8 +1413,20 @@ class ChatViewModel(
         showPrivateChatSheet(conversationID)
     }
 
-    fun setAvatarFromUri(uri: android.net.Uri): Boolean =
-        dataManager.saveAvatarFromUri(uri)
+    fun setAvatarFromUri(uri: android.net.Uri): Boolean {
+        val saved = dataManager.saveAvatarFromUri(uri)
+        if (saved) {
+            // A new photo bumps the profile version: re-announce over BLE
+            // and push the new version to favorites over Nostr so they
+            // fetch the updated profile in the background.
+            mesh.sendBroadcastAnnounce()
+            try {
+                com.bitchat.android.services.ProfileSyncManager.getInstance(getApplication())
+                    .announceOwnProfileChange()
+            } catch (_: Exception) { }
+        }
+        return saved
+    }
 
     // Linkz DM message menu support: local delete and forward. Forward
     // reuses the exact private-send path sendMessage uses (same packets,
@@ -1633,6 +1689,9 @@ class ChatViewModel(
 
     fun showPrivateChatSheet(peerID: String) {
         val conversationID = ContactDirectory.canonicalConversationId(peerID)
+        // Opportunistic profile fetch: when opening a chat with a peer we
+        // have never cached, ask for their profile in the background.
+        maybeFetchPeerProfile(peerID)
         state.setPrivateChatSheetPeer(conversationID)
     }
 
