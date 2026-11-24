@@ -306,6 +306,46 @@ class NostrTransport(
         }
     }
     
+    /**
+     * Send one profile-sync packet (already embedded as a `bitchat1:` string)
+     * to a peer over Nostr as a NIP-17 gift wrap. Fire-and-forget, like the
+     * other profile-independent sends here: no delivery guarantee, the peer
+     * retries from the next advertisement when it gets nothing.
+     */
+    fun sendProfilePacket(embedded: String, to: String) {
+        transportScope.launch {
+            try {
+                val recipientNostrPubkey = resolveNostrPublicKey(to)
+                if (recipientNostrPubkey == null) {
+                    Log.w(TAG, "No Nostr public key found for profile packet to: $to")
+                    return@launch
+                }
+
+                val senderIdentity = NostrIdentityBridge.getCurrentNostrIdentity(context)
+                if (senderIdentity == null) {
+                    Log.e(TAG, "No Nostr identity available for profile packet")
+                    return@launch
+                }
+
+                val recipientHex = ContactIdentityResolver.nostrPubkeyHex(recipientNostrPubkey)
+                    ?: return@launch
+
+                val giftWraps = NostrProtocol.createPrivateMessage(
+                    content = embedded,
+                    recipientPubkey = recipientHex,
+                    senderIdentity = senderIdentity
+                )
+
+                giftWraps.forEach { event ->
+                    NostrRelayManager.registerPendingGiftWrap(event.id)
+                    NostrRelayManager.getInstance(context).sendEvent(event)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to send profile packet via Nostr: ${e.message}")
+            }
+        }
+    }
+
     fun sendDeliveryAck(messageID: String, to: String) {
         transportScope.launch {
             try {

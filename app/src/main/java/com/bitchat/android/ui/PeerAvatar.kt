@@ -14,6 +14,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.res.painterResource
@@ -44,7 +45,10 @@ internal fun PeerAvatar(
     isVerified: Boolean = false,
     badge: (@Composable () -> Unit)? = null,
     shape: Shape = CircleShape,
-    fontFamily: FontFamily = BitchatFontFamily
+    fontFamily: FontFamily = BitchatFontFamily,
+    // Cached profile photo of this peer (from background profile sync).
+    // When absent the initial letter shows, as before.
+    photo: androidx.compose.ui.graphics.ImageBitmap? = null
 ) {
     val palette = LocalBitchatPalette.current
     val colorScheme = MaterialTheme.colorScheme
@@ -59,14 +63,25 @@ internal fun PeerAvatar(
                 .background(color.copy(alpha = 0.16f), shape),
             contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = name.trim().firstOrNull()?.uppercase() ?: "#",
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontFamily = fontFamily,
-                    fontWeight = FontWeight.SemiBold
-                ),
-                color = color
-            )
+            if (photo != null) {
+                androidx.compose.foundation.Image(
+                    bitmap = photo,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(shape),
+                    contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                )
+            } else {
+                Text(
+                    text = name.trim().firstOrNull()?.uppercase() ?: "#",
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontFamily = fontFamily,
+                        fontWeight = FontWeight.SemiBold
+                    ),
+                    color = color
+                )
+            }
         }
 
         if (badge != null) {

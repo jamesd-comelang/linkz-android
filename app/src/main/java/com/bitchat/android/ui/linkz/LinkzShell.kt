@@ -480,6 +480,8 @@ private fun LinkzChatsTab(
     var addByIdInput by remember { mutableStateOf("") }
     var addByIdNote by remember { mutableStateOf<String?>(null) }
     var showAddByInviteDialog by remember { mutableStateOf(false) }
+    // Cached profile photos of peers (background profile sync).
+    val peerPhotos by viewModel.peerPhotos.collectAsStateWithLifecycle()
     // Same people list as the Contacts tab: nearby peers plus past
     // conversations, deduped, blocked peers left out. Powers both the
     // New Chat picker and Add by ID matching.
@@ -696,7 +698,8 @@ private fun LinkzChatsTab(
                                     LinkzAvatar(
                                         name = contact.displayName,
                                         color = linkzAvatarColor(contact.id),
-                                        size = 40.dp
+                                        size = 40.dp,
+                                        photo = peerPhotos[contact.id]
                                     )
                                     Spacer(modifier = Modifier.width(12.dp))
                                     Text(
@@ -867,7 +870,8 @@ private fun LinkzChatsTab(
             items(filtered, key = { it.conversationID }) { summary ->
                 LinkzSwipeableChatRow(
                     summary = summary,
-                    viewModel = viewModel
+                    viewModel = viewModel,
+                    photo = peerPhotos[summary.conversationID]
                 )
             }
             if (filtered.isEmpty() && joinedChannels.isEmpty()) {
@@ -907,7 +911,10 @@ private fun LinkzChatsTab(
 @Composable
 private fun LinkzSwipeableChatRow(
     summary: com.bitchat.android.ui.ConversationSummary,
-    viewModel: ChatViewModel
+    viewModel: ChatViewModel,
+    // Cached profile photo of this peer (from background profile sync),
+    // passed down from the Chats tab, which collects the photos flow.
+    photo: androidx.compose.ui.graphics.ImageBitmap? = null
 ) {
     val scope = rememberCoroutineScope()
     val dismissState = rememberSwipeToDismissBoxState(
@@ -981,6 +988,7 @@ private fun LinkzSwipeableChatRow(
             unreadCount = summary.unreadCount,
             avatarColor = linkzAvatarColor(summary.conversationID),
             isMuted = summary.isMuted,
+            photo = photo,
             onClick = { viewModel.showPrivateChatSheet(summary.conversationID) }
         )
     }
@@ -1007,6 +1015,8 @@ private fun LinkzContactsTab(
     var addByIdNote by remember { mutableStateOf<String?>(null) }
     var showAddByInviteDialog by remember { mutableStateOf(false) }
     val friendRequests by viewModel.friendRequests.collectAsStateWithLifecycle()
+    // Cached profile photos of peers (background profile sync).
+    val peerPhotos by viewModel.peerPhotos.collectAsStateWithLifecycle()
     val pendingRequestCount = friendRequests.count {
         it.direction == FriendRequestDirection.INCOMING &&
             it.status == FriendRequestStatus.PENDING && !it.isExpired()
@@ -1200,19 +1210,31 @@ private fun LinkzContactsTab(
             if (favorites.isNotEmpty()) {
                 item { LinkzSectionHeader(text = "Favorites") }
                 items(favorites, key = { it.id.lowercase() }) { contact ->
-                    LinkzContactRow(contact) { selectedContactId = contact.id }
+                    LinkzContactRow(
+                        contact,
+                        onClick = { selectedContactId = contact.id },
+                        photo = peerPhotos[contact.id]
+                    )
                 }
             }
             if (others.isNotEmpty()) {
                 item { LinkzSectionHeader(text = "Contacts") }
                 items(others, key = { it.id.lowercase() }) { contact ->
-                    LinkzContactRow(contact) { selectedContactId = contact.id }
+                    LinkzContactRow(
+                        contact,
+                        onClick = { selectedContactId = contact.id },
+                        photo = peerPhotos[contact.id]
+                    )
                 }
             }
             if (blocked.isNotEmpty()) {
                 item { LinkzSectionHeader(text = "Blocked") }
                 items(blocked, key = { it.id.lowercase() }) { contact ->
-                    LinkzContactRow(contact) { selectedContactId = contact.id }
+                    LinkzContactRow(
+                        contact,
+                        onClick = { selectedContactId = contact.id },
+                        photo = peerPhotos[contact.id]
+                    )
                 }
             }
             if (contacts.isEmpty()) {
@@ -1266,7 +1288,12 @@ private fun LinkzContactsTab(
 }
 
 @Composable
-private fun LinkzContactRow(contact: LinkzContact, onClick: () -> Unit) {
+private fun LinkzContactRow(
+    contact: LinkzContact,
+    onClick: () -> Unit,
+    // Cached profile photo of this peer (from background profile sync).
+    photo: androidx.compose.ui.graphics.ImageBitmap? = null
+) {
     val preview = when {
         contact.isBlocked -> "Blocked"
         contact.isFavorite -> "★ Favorite"
@@ -1280,6 +1307,7 @@ private fun LinkzContactRow(contact: LinkzContact, onClick: () -> Unit) {
         unreadCount = 0,
         avatarColor = linkzAvatarColor(contact.id),
         isMuted = contact.isMuted,
+        photo = photo,
         onClick = onClick
     )
 }

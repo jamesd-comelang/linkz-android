@@ -276,7 +276,10 @@ fun LinkzAvatar(
     name: String,
     color: Color,
     size: Dp = 48.dp,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    // Cached profile photo of this peer (from background profile sync).
+    // When absent the initial letter shows, as before.
+    photo: androidx.compose.ui.graphics.ImageBitmap? = null
 ) {
     Box(
         modifier = modifier
@@ -285,14 +288,23 @@ fun LinkzAvatar(
             .background(color.copy(alpha = 0.16f)),
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            text = name.trim().firstOrNull()?.uppercase() ?: "#",
-            style = MaterialTheme.typography.titleMedium.copy(
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 18.sp
-            ),
-            color = color
-        )
+        if (photo != null) {
+            androidx.compose.foundation.Image(
+                bitmap = photo,
+                contentDescription = null,
+                modifier = Modifier.size(size),
+                contentScale = androidx.compose.ui.layout.ContentScale.Crop
+            )
+        } else {
+            Text(
+                text = name.trim().firstOrNull()?.uppercase() ?: "#",
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 18.sp
+                ),
+                color = color
+            )
+        }
     }
 }
 
@@ -313,7 +325,9 @@ fun LinkzChatRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     subtitle: String? = null,
-    isMuted: Boolean = false
+    isMuted: Boolean = false,
+    // Cached profile photo of this peer (from background profile sync).
+    photo: androidx.compose.ui.graphics.ImageBitmap? = null
 ) {
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -328,7 +342,7 @@ fun LinkzChatRow(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box {
-                    LinkzAvatar(name = name, color = avatarColor)
+                    LinkzAvatar(name = name, color = avatarColor, photo = photo)
                     if (unreadCount > 0 && !isMuted) {
                         LinkzUnreadBadge(
                             count = unreadCount,

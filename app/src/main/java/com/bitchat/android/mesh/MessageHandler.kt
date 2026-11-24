@@ -35,6 +35,10 @@ class MessageHandler(private val myPeerID: String, private val appContext: andro
     // Delegate for callbacks
     var delegate: MessageHandlerDelegate? = null
 
+    // Profile sync (WeChat-style lazy avatar sync). Set by MeshCore; null means
+    // profile packets are dropped silently (old clients behave the same way).
+    var profileSyncHandler: com.bitchat.android.model.ProfileSyncHandler? = null
+
     // Reference to PacketProcessor for recursive packet handling
     var packetProcessor: PacketProcessor? = null
 
@@ -88,6 +92,32 @@ class MessageHandler(private val myPeerID: String, private val appContext: andro
             }
             
             when (noisePayload.type) {
+                // Profile sync (lazy avatar sync): background, low priority,
+                // never blocks messages. Malformed payloads are dropped.
+                com.bitchat.android.model.NoisePayloadType.PROFILE_REQUEST -> {
+                    val cachedVersion =
+                        com.bitchat.android.model.ProfileSync.decodeRequest(noisePayload.data)
+                            ?: return true
+                    val reply = profileSyncHandler?.replyForRequest(peerID, cachedVersion)
+                        ?: return true
+                    sendProfilePayload(reply.first, reply.second, peerID)
+                }
+
+                com.bitchat.android.model.NoisePayloadType.PROFILE_ANNOUNCE -> {
+                    val announce =
+                        com.bitchat.android.model.ProfileSync.decodeAnnounce(noisePayload.data)
+                            ?: return true
+                    profileSyncHandler?.onProfileAnnounce(peerID, announce)
+                }
+
+                com.bitchat.android.model.NoisePayloadType.PROFILE_RESPONSE -> {
+                    profileSyncHandler?.onProfileResponse(peerID, noisePayload.data)
+                }
+
+                com.bitchat.android.model.NoisePayloadType.PROFILE_RESPONSE_CHUNK -> {
+                    profileSyncHandler?.onProfileChunk(peerID, noisePayload.data)
+                }
+
                 com.bitchat.android.model.NoisePayloadType.PRIVATE_MESSAGE -> {
                     // Decode TLV private message exactly like iOS
                     val privateMessage = com.bitchat.android.model.PrivateMessagePacket.decode(noisePayload.data)
@@ -267,7 +297,40 @@ class MessageHandler(private val myPeerID: String, private val appContext: andro
             Log.e(TAG, "Failed to send delivery ACK to $senderPeerID: ${e.message}")
         }
     }
-    
+
+    /**
+     * Send one profile-sync payload over BLE, Noise-encrypted like any DM.
+     * The transport fragments it if needed (a full profile response is
+     * ~tens of KiB, well within the existing fragmentation limits).
+     */
+    private suspend fun sendProfilePayload(
+        type: com.bitchat.android.model.NoisePayloadType,
+        data: ByteArray,
+        recipientPeerID: String
+    ) {
+        try {
+            val payload = com.bitchat.android.model.NoisePayload(type = type, data = data)
+            val encryptedPayload = delegate?.encryptForPeer(payload.encode(), recipientPeerID)
+            if (encryptedPayload == null) {
+                Log.w(TAG, "Failed to encrypt profile payload for $recipientPeerID")
+                return
+            }
+            val packet = BitchatPacket(
+                version = 1u,
+                type = MessageType.NOISE_ENCRYPTED.value,
+                senderID = hexStringToByteArray(myPeerID),
+                recipientID = hexStringToByteArray(recipientPeerID),
+                timestamp = System.currentTimeMillis().toULong(),
+                payload = encryptedPayload,
+                signature = null,
+                ttl = com.bitchat.android.util.AppConstants.MESSAGE_TTL_HOPS
+            )
+            delegate?.sendPacket(packet)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to send profile payload to $recipientPeerID: ${e.message}")
+        }
+    }
+
     /**
      * Handle announce message with TLV decoding and signature verification - exactly like iOS
      */
@@ -354,6 +417,29 @@ class MessageHandler(private val myPeerID: String, private val appContext: andro
             com.bitchat.android.services.meshgraph.MeshGraphService.getInstance()
                 .updateFromAnnouncement(peerID, nickname, neighborsOrNull, packet.timestamp)
         } catch (_: Exception) { }
+
+        // Profile sync: a newer (version, photo hash) in the announce means
+        // the peer's profile changed since our cached copy. Ask for the full
+        // profile over BLE when a Noise session exists, else over Nostr.
+        val profileVersion = announcement.profileVersion
+        if (profileVersion != null) {
+            val hashHex = announcement.profilePhotoHash?.let { bytes ->
+                with(com.bitchat.android.model.ProfileSync) { bytes.toHexString() }
+            }
+            val requestBytes = profileSyncHandler?.requestBytesForAdvertised(
+                peerID, profileVersion, hashHex
+            )
+            if (requestBytes != null) {
+                if (delegate?.hasNoiseSession(peerID) == true) {
+                    sendProfilePayload(
+                        com.bitchat.android.model.NoisePayloadType.PROFILE_REQUEST,
+                        requestBytes, peerID
+                    )
+                } else {
+                    profileSyncHandler?.fetchOverNostr(peerID, profileVersion, hashHex)
+                }
+            }
+        }
 
         Log.d(TAG, "Verified announce from $peerID (${announcement.nickname})")
         return AnnounceHandlingResult.Accepted(isFirstAnnounce)
