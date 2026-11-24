@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material3.Icon
@@ -15,8 +16,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.bitchat.android.R
@@ -27,6 +30,11 @@ internal val PeerAvatarBadgeSize = 18.dp
 private val PeerAvatarStarSize = 16.dp
 private val PeerAvatarVerifiedSize = 16.dp
 
+/**
+ * Peer avatar: initial on a tinted background. Circular by default
+ * (peer lists); the chat transcript passes the square WeChat shape
+ * ([RoundedCornerShape] 6dp) so message rows match the home screen.
+ */
 @Composable
 internal fun PeerAvatar(
     name: String,
@@ -36,6 +44,8 @@ internal fun PeerAvatar(
     theyFavoritedUs: Boolean = false,
     isVerified: Boolean = false,
     badge: (@Composable () -> Unit)? = null,
+    shape: Shape = CircleShape,
+    fontFamily: FontFamily = BitchatFontFamily,
     // Cached profile photo of this peer (from background profile sync).
     // When absent the initial letter shows, as before.
     photo: androidx.compose.ui.graphics.ImageBitmap? = null
@@ -50,7 +60,7 @@ internal fun PeerAvatar(
         Box(
             modifier = Modifier
                 .size(38.dp)
-                .background(color.copy(alpha = 0.16f), CircleShape),
+                .background(color.copy(alpha = 0.16f), shape),
             contentAlignment = Alignment.Center
         ) {
             if (photo != null) {
@@ -59,14 +69,14 @@ internal fun PeerAvatar(
                     contentDescription = null,
                     modifier = Modifier
                         .size(38.dp)
-                        .clip(CircleShape),
+                        .clip(shape),
                     contentScale = androidx.compose.ui.layout.ContentScale.Crop
                 )
             } else {
                 Text(
                     text = name.trim().firstOrNull()?.uppercase() ?: "#",
                     style = MaterialTheme.typography.titleMedium.copy(
-                        fontFamily = BitchatFontFamily,
+                        fontFamily = fontFamily,
                         fontWeight = FontWeight.SemiBold
                     ),
                     color = color

@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
@@ -269,7 +268,7 @@ fun ChatScreen(viewModel: ChatViewModel) {
         val headerHeight = ChatHeaderHeight
         val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
 
-        // Both bars are translucent and the conversation scrolls underneath them, so their
+        // Both bars are solid and the conversation scrolls underneath them, so their
         // heights are reserved as list padding instead of as layout space. The composer's height
         // varies (suggestion rows, wrapped lines), so it is measured rather than assumed.
         var composerHeight by remember { mutableStateOf(0.dp) }
@@ -297,7 +296,7 @@ fun ChatScreen(viewModel: ChatViewModel) {
             // Messages area - takes up available space, will compress when keyboard appears
             // Nearby-notes strip and the reveal hint both live in this Box alongside the
             // list, rather than in a Column above it, because the conversation has to scroll
-            // underneath the translucent bars. Their heights are reserved as list padding.
+            // underneath the solid bars. Their heights are reserved as list padding.
             var notesStripHeight by remember { mutableStateOf(0.dp) }
             val showNotesStrip =
                 isMeshTimeline && nearbyNotesRevealed && nearbyNotes.isNotEmpty()
@@ -682,13 +681,12 @@ fun ChatInputSection(
         com.bitchat.android.features.voice.LiveVoiceManager.getInstance(context).activePublicTalker
     }.collectAsState()
     Column(
-        // Flat, slightly translucent screen background — the same treatment as the top bar, so the
-        // two bars are visibly the same kind of surface. No gradient: a soft ramp here just looked
-        // like a smudge above a crisp hairline. The rule is inside the background so the whole bar
-        // is one surface with a top border, rather than a line floating over the conversation.
+        // Solid white like WeChat's input bar, so the field (white) reads
+        // as one surface with a top hairline — the old translucent grey
+        // made the white field look like a grey smudge.
         modifier = modifier
             .fillMaxWidth()
-            .background(colorScheme.background.copy(alpha = BarBackgroundAlpha))
+            .background(colorScheme.surface)
     ) {
         // Hairline marking where chrome begins. Faint on purpose — it is a hint, not a border.
         HorizontalDivider(thickness = 1.dp, color = colorScheme.outlineVariant)
@@ -765,21 +763,8 @@ fun ChatInputSection(
 }
 
 /**
- * Opacity shared by both bars.
- *
- * Slight, so the conversation scrolling underneath stays faintly perceptible and the chrome reads
- * as sitting over the content rather than boxing it in — without ever costing legibility.
+ * WeChat-style conversation header: back arrow, centred title, "..." menu.
  */
-private const val BarBackgroundAlpha = 0.88f
-
-/**
- * Fraction of the header that stays fully opaque, measured from the top.
- *
- * The header is the one place a gradient earns its keep: the status bar is transparent, so the
- * header has to be the true background colour where the two meet or the system bar stops looking
- * like part of the app. Everything below that stop matches the composer's flat translucency.
- */
-private const val HeaderOpaqueStop = 0.72f
 @Composable
 private fun ChatFloatingHeader(
     selectedPrivatePeer: String?,
@@ -800,17 +785,11 @@ private fun ChatFloatingHeader(
         modifier = Modifier
             .fillMaxWidth()
             .zIndex(1f)
-            // Fully opaque where it meets the system status bar, fading to translucent at its
-            // lower edge. The status bar itself is transparent, so anything less than opaque at
-            // the top would let the wallpaper or a light system-bar scrim bleed through and the
-            // header would stop reading as part of the app.
-            .background(
-                Brush.verticalGradient(
-                    0f to colorScheme.background,
-                    HeaderOpaqueStop to colorScheme.background,
-                    1f to colorScheme.background.copy(alpha = BarBackgroundAlpha)
-                )
-            )
+            // Solid grey like the background — WeChat's header is one flat
+            // surface, not a gradient. The status bar itself is transparent,
+            // so the solid fill is what keeps the header reading as part of
+            // the app instead of letting the wallpaper bleed through.
+            .background(colorScheme.background)
             .windowInsetsPadding(WindowInsets.statusBars) // Extend into status bar area
     ) {
         // No TopAppBar: it silently injects a 4.dp horizontal pad plus a 12.dp title inset and

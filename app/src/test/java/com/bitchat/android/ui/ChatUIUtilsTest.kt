@@ -3,10 +3,10 @@ package com.bitchat.android.ui
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import com.bitchat.android.model.BitchatMessage
-import com.bitchat.android.ui.theme.BitchatFontFamily
 import com.bitchat.android.ui.theme.ChatVisualTokens
 import com.bitchat.android.ui.theme.DarkBitchatColorScheme
 import com.bitchat.android.ui.theme.DarkBitchatPalette
@@ -16,12 +16,9 @@ import com.bitchat.android.ui.theme.MessageBodyTextStyle
 import com.bitchat.android.ui.theme.MessageSenderTextStyle
 import com.bitchat.android.ui.theme.PeerColorStyle
 import com.bitchat.android.ui.theme.colorForPeer
-import java.text.SimpleDateFormat
 import java.util.Date
-import java.util.Locale
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -33,9 +30,6 @@ import org.robolectric.RobolectricTestRunner
  */
 @RunWith(RobolectricTestRunner::class)
 class ChatUIUtilsTest {
-    private val timeFormatter = SimpleDateFormat(CHAT_TIMESTAMP_PATTERN, Locale.ROOT).apply {
-        timeZone = java.util.TimeZone.getTimeZone("UTC")
-    }
 
     private val palette = DarkBitchatPalette
     private val colorScheme = DarkBitchatColorScheme
@@ -51,80 +45,30 @@ class ChatUIUtilsTest {
         powDifficulty = powDifficulty,
     )
 
-    // MARK: - Timestamp metadata
+    // MARK: - Body carries no timestamp
 
     @Test
-    fun `text message metadata separates PoW badge with one space`() {
-        assertEquals(
-            "00:00 ⛨12b",
-            formatTextMessageMetadata(message("hello", powDifficulty = 12), timeFormatter).text,
-        )
-    }
-
-    @Test
-    fun `text message metadata omits non-positive PoW difficulty`() {
-        assertEquals(
-            "00:00",
-            formatTextMessageMetadata(message("hello", powDifficulty = 0), timeFormatter).text,
-        )
-    }
-
-    // MARK: - Body with inline trailing timestamp
-
-    @Test
-    fun `body appends timestamp inline after the message text`() {
+    fun `body carries no timestamp or PoW badge`() {
+        // WeChat shows the time only as a centered separator between message groups, never
+        // inside a bubble — so the body is just the message, even for mined messages.
         val body = formatTextMessageBody(
             message = message("hello there"),
             currentUserNickname = "bob",
             palette = palette,
             contentColor = colorScheme.onSurface,
             linkColor = colorScheme.secondary,
-            timeFormatter = timeFormatter,
         )
+        assertEquals("hello there", body.text)
 
-        assertEquals("hello there  00:00", body.text)
-        val timestamp = body.spanStyles.first {
-            body.text.substring(it.start, it.end) == "  00:00"
-        }.item
-        assertEquals(10.sp, timestamp.fontSize)
-        assertEquals(FontWeight.Normal, timestamp.fontWeight)
-        assertEquals(palette.textTertiary, timestamp.color)
-    }
-
-    @Test
-    fun `body appends PoW badge after the inline timestamp`() {
-        val body = formatTextMessageBody(
+        val mined = formatTextMessageBody(
             message = message("mined", powDifficulty = 8),
             currentUserNickname = "bob",
             palette = palette,
             contentColor = colorScheme.onSurface,
             linkColor = colorScheme.secondary,
-            timeFormatter = timeFormatter,
         )
-
-        assertEquals("mined  00:00 ⛨8b", body.text)
-        val timestampAndPow = body.spanStyles.first {
-            body.text.substring(it.start, it.end) == "  00:00 ⛨8b"
-        }.item
-        assertEquals(10.sp, timestampAndPow.fontSize)
-        assertEquals(palette.textTertiary, timestampAndPow.color)
+        assertEquals("mined", mined.text)
     }
-
-    @Test
-    fun `body can omit the timestamp for callers that render it separately`() {
-        val body = formatTextMessageBody(
-            message = message("hello there"),
-            currentUserNickname = "bob",
-            palette = palette,
-            contentColor = colorScheme.onSurface,
-            linkColor = colorScheme.secondary,
-            timeFormatter = timeFormatter,
-            includeTimestamp = false,
-        )
-
-        assertEquals("hello there", body.text)
-    }
-
     @Test
     fun `body renders plain text in the neutral palette color, not terminal green`() {
         val body = formatTextMessageBody(
@@ -133,8 +77,6 @@ class ChatUIUtilsTest {
             palette = palette,
             contentColor = colorScheme.onSurface,
             linkColor = colorScheme.secondary,
-            timeFormatter = timeFormatter,
-            includeTimestamp = false,
         )
 
         val textStyle = body.spanStyles.first { it.start == 0 }
@@ -146,7 +88,7 @@ class ChatUIUtilsTest {
         assertEquals(14.sp, MessageBodyTextStyle.fontSize)
         assertEquals(20.sp, MessageBodyTextStyle.lineHeight)
         assertEquals(FontWeight.Normal, MessageBodyTextStyle.fontWeight)
-        assertEquals(BitchatFontFamily, MessageBodyTextStyle.fontFamily)
+        assertEquals(FontFamily.Default, MessageBodyTextStyle.fontFamily)
         assertEquals(14.sp, MessageSenderTextStyle.fontSize)
         assertEquals(16.sp, MessageSenderTextStyle.lineHeight)
         assertEquals(FontWeight.SemiBold, MessageSenderTextStyle.fontWeight)
@@ -162,8 +104,6 @@ class ChatUIUtilsTest {
             palette = palette,
             contentColor = colorScheme.onSurface,
             linkColor = colorScheme.secondary,
-            timeFormatter = timeFormatter,
-            includeTimestamp = false,
         )
 
         assertTrue(
@@ -188,8 +128,6 @@ class ChatUIUtilsTest {
             palette = palette,
             contentColor = colorScheme.onSurface,
             linkColor = colorScheme.secondary,
-            timeFormatter = timeFormatter,
-            includeTimestamp = false,
         )
 
         val chips = mentionChipSpans(body)
@@ -208,8 +146,6 @@ class ChatUIUtilsTest {
             palette = palette,
             contentColor = colorScheme.onSurface,
             linkColor = colorScheme.secondary,
-            timeFormatter = timeFormatter,
-            includeTimestamp = false,
         )
 
         val chip = mentionChipSpans(body).single()
@@ -244,8 +180,6 @@ class ChatUIUtilsTest {
             contentColor = colorScheme.onSurface,
             linkColor = colorScheme.secondary,
             mentionPeerIdentities = mentionPeerIdentities,
-            timeFormatter = timeFormatter,
-            includeTimestamp = false,
         )
 
         val expected = colorForPeer(identity, palette)
@@ -340,8 +274,6 @@ class ChatUIUtilsTest {
             palette = palette,
             contentColor = colorScheme.onSurface,
             linkColor = colorScheme.secondary,
-            timeFormatter = timeFormatter,
-            includeTimestamp = false,
         )
 
         assertTrue(mentionChipSpans(body).isEmpty())
@@ -350,14 +282,13 @@ class ChatUIUtilsTest {
     // MARK: - System / action messages
 
     @Test
-    fun `system message uses a double-slash prefix and no brackets`() {
+    fun `system message has no prefix and no timestamp`() {
         val text = formatSystemMessage(
             message = message("Tor started. Routing all chats via Tor", sender = "system"),
             contentColor = colorScheme.onSurface,
-            timeFormatter = timeFormatter,
         ).text
 
-        assertEquals("// Tor started. Routing all chats via Tor  00:00", text)
+        assertEquals("Tor started. Routing all chats via Tor", text)
     }
 
     @Test
@@ -367,79 +298,59 @@ class ChatUIUtilsTest {
         val annotated = formatSystemMessage(
             message = message("tor restarting", sender = "system"),
             contentColor = colorScheme.onSurface,
-            timeFormatter = timeFormatter,
         )
 
         assertTrue(annotated.spanStyles.all { it.item.fontStyle == null })
     }
 
     @Test
-    fun `system action and timestamp use their exported weights sizes and opacity`() {
+    fun `system action uses its exported weight size and opacity`() {
         val annotated = formatSystemMessage(
             message = message("tor restarting", sender = "system"),
             contentColor = colorScheme.onSurface,
-            timeFormatter = timeFormatter,
         )
 
-        val action = annotated.spanStyles.first {
-            annotated.text.substring(it.start, it.end) == "// tor restarting"
-        }.item
-        val time = annotated.spanStyles.first {
-            annotated.text.substring(it.start, it.end) == "  00:00"
-        }.item
-
-        assertEquals(12.sp, action.fontSize)
-        assertEquals(FontWeight.Medium, action.fontWeight)
-        assertEquals(colorScheme.onSurface.copy(alpha = 0.5f), action.color)
-        assertEquals(10.sp, time.fontSize)
-        assertEquals(FontWeight.Normal, time.fontWeight)
-        assertEquals(colorScheme.onSurface.copy(alpha = 0.5f), time.color)
-    }
-
-    // MARK: - Sender label
-
-    @Test
-    fun `sender label drops angle brackets and dims the hash suffix`() {
-        val sender = formatTextMessageSender(
-            message = message("hi", sender = "carol#04af"),
-            currentUserNickname = "bob",
-            myPeerID = "peer-me",
-            palette = palette,
-        )
-
-        assertEquals("@carol #04af", sender.text)
-
-        val suffixSpan = sender.spanStyles.first { sender.text.substring(it.start, it.end) == "#04af" }
-        val nameSpan = sender.spanStyles.first { sender.text.substring(it.start, it.end) == "@carol" }
-        assertNotNull(suffixSpan.item.color)
-        assertEquals(14.sp, nameSpan.item.fontSize)
-        assertEquals(FontWeight.SemiBold, nameSpan.item.fontWeight)
-        assertEquals(14.sp, suffixSpan.item.fontSize)
-        assertEquals(FontWeight.Normal, suffixSpan.item.fontWeight)
-        assertEquals(ChatVisualTokens.SenderSuffixAlpha, suffixSpan.item.color.alpha)
-        assertTrue(
-            "suffix must be dimmer than the name",
-            suffixSpan.item.color.alpha < nameSpan.item.color.alpha
+        assertEquals(1, annotated.spanStyles.size)
+        val span = annotated.spanStyles.first()
+        assertEquals(0, span.start)
+        assertEquals("tor restarting".length, span.end)
+        assertEquals(ChatVisualTokens.SystemActionFontSize, span.item.fontSize)
+        assertEquals(FontWeight.Medium, span.item.fontWeight)
+        assertEquals(
+            colorScheme.onSurface.copy(alpha = ChatVisualTokens.MutedTextAlpha),
+            span.item.color
         )
     }
 
-    @Test
-    fun `sender label annotates the nickname for others but not for yourself`() {
-        val other = formatTextMessageSender(
-            message = message("hi", sender = "carol#04af"),
-            currentUserNickname = "bob",
-            myPeerID = "peer-me",
-            palette = palette,
-        )
-        assertEquals(1, other.getStringAnnotations("nickname_click", 0, other.length).size)
+    // MARK: - Channel sender label
 
-        val mine = formatTextMessageSender(
+    @Test
+    fun `channel sender label is the plain nickname, no at-sign or hash suffix`() {
+        val label = formatChannelSenderLabel(
+            message = message("hi", sender = "carol#04af"),
+            isSelf = false,
+            labelColor = colorScheme.onSurfaceVariant,
+        )
+
+        assertEquals("carol", label.text)
+        assertEquals(1, label.spanStyles.size)
+        val span = label.spanStyles.first().item
+        assertEquals(12.sp, span.fontSize)
+        assertEquals(FontWeight.Normal, span.fontWeight)
+        assertEquals(colorScheme.onSurfaceVariant, span.color)
+        assertEquals(1, label.getStringAnnotations("nickname_click", 0, label.length).size)
+    }
+
+    @Test
+    fun `channel sender label does not annotate your own nickname`() {
+        val label = formatChannelSenderLabel(
             message = message("hi", sender = "bob"),
-            currentUserNickname = "bob",
-            myPeerID = "peer-me",
-            palette = palette,
+            isSelf = true,
+            labelColor = colorScheme.onSurfaceVariant,
         )
-        assertTrue(mine.getStringAnnotations("nickname_click", 0, mine.length).isEmpty())
+
+        assertEquals("bob", label.text)
+        assertTrue(label.getStringAnnotations("nickname_click", 0, label.length).isEmpty())
     }
 
     // MARK: - Peer colors

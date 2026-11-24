@@ -2,16 +2,21 @@ package com.bitchat.android.ui.linkz
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -32,9 +37,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -46,6 +48,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -97,7 +100,9 @@ fun LinkzTopBar(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 10.dp)
+                // No vertical padding: the 48dp buttons set the bar height,
+                // matching WeChat's ~48dp title bar (was 68dp with 10dp padding).
+                .padding(vertical = 0.dp)
         ) {
             if (onBackClick != null) {
                 Row(
@@ -177,22 +182,45 @@ fun LinkzBottomNav(
     totalUnread: Int = 0,
     modifier: Modifier = Modifier
 ) {
-    NavigationBar(
-        modifier = modifier,
-        containerColor = MaterialTheme.colorScheme.surface,
+    // WeChat's tab bar is ~56dp tall; Material3's NavigationBar defaults to
+    // 80dp, which is why the footer looked oversized. A plain Row keeps the
+    // same icons, labels and badge with exact height control. The system
+    // navigation-bar inset is still honoured, as NavigationBar did.
+    // (There is no selected-indicator pill to preserve: it was transparent.)
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.background,
         tonalElevation = 0.dp
     ) {
-        for (tab in LinkzTab.entries) {
-            val badgeCount = if (tab == LinkzTab.CHATS) totalUnread else 0
-            NavigationBarItem(
-                selected = selected == tab,
-                onClick = { onSelect(tab) },
-                icon = {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .windowInsetsPadding(WindowInsets.navigationBars)
+                .height(56.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            for (tab in LinkzTab.entries) {
+                val isSelected = selected == tab
+                val badgeCount = if (tab == LinkzTab.CHATS) totalUnread else 0
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clickable(role = Role.Tab) { onSelect(tab) }
+                        .semantics {
+                            contentDescription = tab.label
+                            this.selected = isSelected
+                        },
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
                     Box(contentAlignment = Alignment.TopEnd) {
                         Icon(
-                            imageVector = if (selected == tab) tab.icon else tab.outlineIcon,
-                            contentDescription = tab.label,
-                            modifier = Modifier.size(24.dp)
+                            imageVector = if (isSelected) tab.icon else tab.outlineIcon,
+                            contentDescription = null,
+                            modifier = Modifier.size(24.dp),
+                            tint = if (isSelected) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         if (badgeCount > 0) {
                             LinkzUnreadBadge(
@@ -201,16 +229,14 @@ fun LinkzBottomNav(
                             )
                         }
                     }
-                },
-                label = { Text(text = tab.label, fontSize = 11.sp) },
-                colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = MaterialTheme.colorScheme.primary,
-                    selectedTextColor = MaterialTheme.colorScheme.primary,
-                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    indicatorColor = Color.Transparent
-                )
-            )
+                    Text(
+                        text = tab.label,
+                        fontSize = 11.sp,
+                        color = if (isSelected) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
         }
     }
 }

@@ -368,6 +368,10 @@
   <string name="cd_cancel">Cancel</string>
   <string name="cd_link">Link</string>
   <string name="cd_record_voice">Record voice note</string>
+  <string name="hold_to_talk">Hold to Talk</string>
+  <string name="cd_voice_input">Voice input</string>
+  <string name="cd_show_keyboard">Show keyboard</string>
+  <string name="cd_more_options">More options</string>
   <string name="cd_pick_media">Pick media</string>
   <string name="cd_offline_mesh_chat">Offline Mesh Chat</string>
   <string name="cd_online_geohash_channels">Online Geohash Channels</string>

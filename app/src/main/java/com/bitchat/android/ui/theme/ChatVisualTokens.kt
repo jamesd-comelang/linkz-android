@@ -40,10 +40,10 @@ internal object ChatVisualTokens {
     // MARK: - Bubble geometry (ChatUiMode.Bubbles)
 
     /** Rounded corner on the three "free" corners of a message bubble. */
-    val BubbleCornerRadius: Dp = 16.dp
+    val BubbleCornerRadius: Dp = 10.dp
 
     /** Tightened corner on the speaker's own side, giving the bubble a subtle tail. */
-    val BubbleTailRadius: Dp = 4.dp
+    val BubbleTailRadius: Dp = 2.dp
 
     /** Padding inside a bubble, around the text. */
     val BubblePaddingHorizontal: Dp = 12.dp
@@ -66,21 +66,21 @@ internal object ChatVisualTokens {
     const val MutedTextAlpha: Float = 0.50f
 
     val MessageBodyStyle = TextStyle(
-        fontFamily = BitchatFontFamily,
+        fontFamily = FontFamily.Default,
         fontWeight = FontWeight.Normal,
         fontSize = MessageBodyFontSize,
         lineHeight = MessageBodyLineHeight,
     )
 
     val SenderStyle = TextStyle(
-        fontFamily = BitchatFontFamily,
+        fontFamily = FontFamily.Default,
         fontWeight = FontWeight.SemiBold,
         fontSize = SenderFontSize,
         lineHeight = SenderLineHeight,
     )
 
     val SystemActionStyle = TextStyle(
-        fontFamily = BitchatFontFamily,
+        fontFamily = FontFamily.Default,
         fontWeight = FontWeight.Medium,
         fontSize = SystemActionFontSize,
         lineHeight = SystemActionLineHeight,

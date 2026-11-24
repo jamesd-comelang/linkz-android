@@ -1,6 +1,5 @@
 package com.bitchat.android.ui.media
 
-import com.bitchat.android.ui.theme.BitchatFontFamily
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -17,6 +16,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -111,7 +111,7 @@ fun VoiceNotePlayer(
             onSeek = seekTo
         )
         val durText = if (durationMs > 0) String.format("%02d:%02d", (durationMs / 1000) / 60, (durationMs / 1000) % 60) else "--:--"
-        Text(text = durText, fontFamily = BitchatFontFamily, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface)
+        Text(text = durText, fontFamily = FontFamily.Default, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface)
     }
 }
 

@@ -119,10 +119,11 @@ fun linkzBubbleStyle(isSelf: Boolean, colorScheme: ColorScheme): LinkzBubbleStyl
  * Sans-serif type for Linkz surfaces, matching the WeChat look. The shared
  * app [Typography] is the bundled Geist Mono family, which is what made
  * the Linkz shell read like a terminal; Linkz deliberately does not use
- * it, so the shell, list rows, and (since [LinkzTheme] wraps the whole
- * app) the chat transcript all render in the system sans-serif instead.
- * Sizes, weights, and line heights mirror [Typography] so nothing else
- * about the layout changes with the font.
+ * it, so the shell and list rows render in the system sans-serif instead.
+ * The chat transcript's own styles ([ChatVisualTokens]) are sans-serif too,
+ * so message bodies, system lines and the composer match. Sizes, weights,
+ * and line heights mirror [Typography] so nothing else about the layout
+ * changes with the font.
  */
 val LinkzTypography = androidx.compose.material3.Typography(
     bodyLarge = TextStyle(

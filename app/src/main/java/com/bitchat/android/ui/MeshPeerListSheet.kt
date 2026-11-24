@@ -6,15 +6,12 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import com.bitchat.android.ui.theme.BitchatFontFamily
 import com.bitchat.android.R
+import android.os.Build
 import android.text.format.DateUtils
 import android.util.Log
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -35,7 +32,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -1671,11 +1667,44 @@ private fun convertRSSIToSignalStrength(rssi: Int?): Int {
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+/**
+ * A DM opened over a channel timeline stays a bottom sheet, as before.
+ * A DM opened from the home screen is a full-screen page instead — see
+ * [PrivateChatContent] with `isFullScreen = true` in the shell.
+ */
 fun PrivateChatSheet(
     isPresented: Boolean,
     peerID: String,
     viewModel: ChatViewModel,
     onDismiss: () -> Unit
+) {
+    if (!isPresented) return
+    val sheetState = rememberModalBottomSheetState(
+        skipPartiallyExpanded = true
+    )
+    BitchatBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+    ) {
+        PrivateChatContent(
+            peerID = peerID,
+            viewModel = viewModel,
+            onDismiss = onDismiss
+        )
+    }
+}
+
+/**
+ * The DM conversation itself: header, message list, input. Rendered
+ * full-screen from the home shell (WeChat-style page) or inside a bottom
+ * sheet when a DM opens over a channel timeline.
+ */
+@Composable
+fun PrivateChatContent(
+    peerID: String,
+    viewModel: ChatViewModel,
+    onDismiss: () -> Unit,
+    isFullScreen: Boolean = false
 ) {
     val colorScheme = MaterialTheme.colorScheme
     val privateChats by viewModel.privateChats.collectAsStateWithLifecycle()
@@ -1683,18 +1712,14 @@ fun PrivateChatSheet(
     val nickname by viewModel.nickname.collectAsStateWithLifecycle()
     val connectedPeers by viewModel.connectedPeers.collectAsStateWithLifecycle()
     val peerDirectMap by viewModel.peerDirect.collectAsStateWithLifecycle()
-    val peerSessionStates by viewModel.peerSessionStates.collectAsStateWithLifecycle()
     val favoritePeers by viewModel.favoritePeers.collectAsStateWithLifecycle()
     val peerFavoritedUs by viewModel.peerFavoritedUs.collectAsStateWithLifecycle()
     val peerFingerprints by viewModel.peerFingerprints.collectAsStateWithLifecycle()
 
-    val verifiedFingerprints by viewModel.verifiedFingerprints.collectAsStateWithLifecycle()
-    val wifiAwareConnected by com.bitchat.android.wifiaware.WifiAwareController.connectedPeers.collectAsStateWithLifecycle()
     val contactResolution = remember(peerID, connectedPeers, favoritePeers) {
         ContactDirectory.resolve(peerID)
     }
     val activeMeshPeerID = contactResolution.meshPeerID
-    val isWifiAware = activeMeshPeerID in wifiAwareConnected.keys || peerID in wifiAwareConnected.keys
 
     // Start private chat when screen opens
     LaunchedEffect(peerID) {
@@ -1739,76 +1764,34 @@ fun PrivateChatSheet(
 
     val conversationID = contactResolution.conversationID
     val messages = privateChats[conversationID] ?: privateChats[peerID] ?: emptyList()
-    val sessionState = resolveConversationSessionState(
-        conversationID = peerID,
-        activeMeshPeerID = activeMeshPeerID,
-        peerSessionStates = peerSessionStates
-    )
     val fingerprint = activeMeshPeerID?.let { peerFingerprints[it] }
         ?: peerFingerprints[peerID]
         ?: ContactIdentityResolver.fingerprintFromContactConversationId(peerID)
     val isFavorite = remember(favoritePeers, fingerprint, peerID, favoriteRelationship) {
         if (fingerprint != null) favoritePeers.contains(fingerprint) else viewModel.isFavorite(peerID)
     }
-    val theyFavoritedUs = remember(peerFavoritedUs, fingerprint, favoriteRelationship) {
-        (fingerprint != null && peerFavoritedUs.contains(fingerprint)) ||
-            favoriteRelationship?.theyFavoritedUs == true
-    }
 
-    // Celebrate being favorited: a springy wobble of the header star. Springs rather than
-    // keyframed tweens, matching the app's press feedback, so the settle overshoots slightly.
-    val starWobbleRotation = remember { Animatable(0f) }
-    val starWobbleScale = remember { Animatable(1f) }
-    var previousTheyFavoritedUs by remember { mutableStateOf<Boolean?>(null) }
-    LaunchedEffect(theyFavoritedUs) {
-        val wasFavoritedUs = previousTheyFavoritedUs
-        previousTheyFavoritedUs = theyFavoritedUs
-        if (theyFavoritedUs && wasFavoritedUs == false) {
-            starWobbleRotation.snapTo(-16f)
-            starWobbleScale.snapTo(1.35f)
-            launch {
-                starWobbleRotation.animateTo(
-                    targetValue = 0f,
-                    animationSpec = spring(dampingRatio = 0.3f, stiffness = Spring.StiffnessMedium)
-                )
-            }
-            launch {
-                starWobbleScale.animateTo(
-                    targetValue = 1f,
-                    animationSpec = spring(
-                        dampingRatio = Spring.DampingRatioMediumBouncy,
-                        stiffness = Spring.StiffnessHigh
+    // Full-screen (home → DM): paint the background and sit below the
+    // status bar, like ChatScreen does. Inside a sheet the sheet itself
+    // provides the background and insets, so the box stays bare.
+    val boxModifier = if (isFullScreen) {
+        Modifier
+            .fillMaxSize()
+            .background(colorScheme.background)
+            .windowInsetsPadding(WindowInsets.statusBars)
+            .then(
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    Modifier.windowInsetsPadding(
+                        WindowInsets.ime.union(WindowInsets.navigationBars)
                     )
-                )
-            }
-        }
+                } else {
+                    Modifier.windowInsetsPadding(WindowInsets.navigationBars)
+                }
+            )
+    } else {
+        Modifier.fillMaxSize()
     }
-
-    val isVerified = remember(peerID, verifiedFingerprints) {
-        viewModel.isPeerVerified(peerID, verifiedFingerprints)
-    }
-
-    val palette = LocalBitchatPalette.current
-    // Three-state star: grey outline (no relation), orange outline (they favorited us),
-    // filled orange (we favorited them, mutual or not).
-    val favoriteStarTint by animateColorAsState(
-        targetValue = when {
-            isFavorite || theyFavoritedUs -> palette.accentOrange
-            else -> colorScheme.onSurfaceVariant
-        },
-        animationSpec = tween(BitchatMotion.STANDARD_MS, easing = FastOutSlowInEasing),
-        label = "favoriteStarTint"
-    )
-    val sheetState = rememberModalBottomSheetState(
-        skipPartiallyExpanded = true
-    )
-
-    if (isPresented) {
-        BitchatBottomSheet(
-            onDismissRequest = onDismiss,
-            sheetState = sheetState,
-        ) {
-            Box(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = boxModifier) {
                 // WeChat-style long-press menu for DM messages. Until
                 // now this was a no-op stub, so DMs had no Copy,
                 // Forward, or Delete at all.
@@ -1895,87 +1878,45 @@ fun PrivateChatSheet(
                     )
                 }
 
-                // Header. Built from the same tokens as the main chat header rather than a
-                // TopAppBar, so moving between the timeline and a conversation does not shift the
-                // bar's height, insets or type.
+                // Header. WeChat-style: back arrow, centered peer name, "..." menu. The
+                // favorite star, verification badge, Noise lock and close all live behind
+                // the menu now; the star's wobble animation goes with them. Verification
+                // state stays visible in the verification sheet itself.
+                val dismiss = LocalSheetDismiss.current
+                val headerMenuItems = buildList {
+                    add(
+                        ConversationHeaderMenuItem(
+                            label = stringResource(
+                                if (isFavorite) R.string.cd_remove_favorite
+                                else R.string.cd_add_favorite
+                            ),
+                            onClick = { viewModel.toggleFavorite(peerID) }
+                        )
+                    )
+                    if (!isNostrPeer && !isNostrReachableFavorite) {
+                        add(
+                            ConversationHeaderMenuItem(
+                                label = stringResource(R.string.verify_title),
+                                onClick = { viewModel.showSecurityVerificationSheet() }
+                            )
+                        )
+                    }
+                    add(
+                        ConversationHeaderMenuItem(
+                            label = stringResource(R.string.cd_close),
+                            onClick = { dismiss?.invoke() ?: onDismiss() }
+                        )
+                    )
+                }
                 Surface(
                     modifier = Modifier.align(Alignment.TopCenter),
                     color = colorScheme.background
                 ) {
                     ConversationHeader(
-                        leadingIconRes = conversationTransportIcon(
-                            isReachedOverInternet = isNostrPeer || isNostrReachableFavorite,
-                            isWifiAware = isWifiAware,
-                            isDirect = isDirect
-                        ),
-                        leadingIconTint = colorScheme.primary,
-                        leadingContentDescription = when {
-                            isNostrPeer || isNostrReachableFavorite ->
-                                stringResource(R.string.cd_nostr_reachable)
-                            else -> null
-                        },
-                        title = titleText
-                    ) {
-                        ConversationHeaderAction(
-                            onClick = { viewModel.toggleFavorite(peerID) },
-                            contentDescription = if (isFavorite) {
-                                stringResource(R.string.cd_remove_favorite)
-                            } else {
-                                stringResource(R.string.cd_add_favorite)
-                            }
-                        ) {
-                            Icon(
-                                painter = painterResource(
-                                    if (isFavorite) {
-                                        R.drawable.ic_spec_star_filled
-                                    } else {
-                                        R.drawable.ic_spec_star
-                                    }
-                                ),
-                                contentDescription = null,
-                                modifier = Modifier
-                                    .size(HeaderIconSize)
-                                    .graphicsLayer {
-                                        rotationZ = starWobbleRotation.value
-                                        scaleX = starWobbleScale.value
-                                        scaleY = starWobbleScale.value
-                                    },
-                                tint = favoriteStarTint
-                            )
-                        }
-
-                        if (isVerified) {
-                            ConversationHeaderStatus {
-                                Icon(
-                                    imageVector = Icons.Filled.Verified,
-                                    contentDescription = stringResource(
-                                        R.string.fingerprint_verified_label
-                                    ),
-                                    modifier = Modifier.size(HeaderIconSize),
-                                    tint = colorScheme.primary
-                                )
-                            }
-                        }
-
-                        // Keep the lock nearest the close action: from right to left the security
-                        // cluster reads close, encryption, verification, then favorite.
-                        if (!isNostrPeer && !isNostrReachableFavorite) {
-                            ConversationHeaderAction(
-                                onClick = { viewModel.showSecurityVerificationSheet() },
-                                contentDescription = stringResource(R.string.verify_title)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    NoiseSessionIcon(
-                                        sessionState = sessionState,
-                                        modifier = Modifier.size(HeaderIconSize)
-                                    )
-                                }
-                            }
-                        }
-
-                        val dismiss = LocalSheetDismiss.current
-                        CloseButton(onClick = { dismiss?.invoke() ?: onDismiss() })
-                    }
+                        title = titleText,
+                        onBackClick = { dismiss?.invoke() ?: onDismiss() },
+                        menuItems = headerMenuItems
+                    )
                 }
                 if (menuMessage != null) {
                     com.bitchat.android.ui.linkz.LinkzMessageMenuSheet(
@@ -1986,6 +1927,4 @@ fun PrivateChatSheet(
                     )
                 }
             }
-        }
-    }
 }

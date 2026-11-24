@@ -1,6 +1,11 @@
 package com.bitchat.android.ui.linkz
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -57,6 +62,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
@@ -66,6 +72,7 @@ import com.bitchat.android.ui.ChatScreen
 import com.bitchat.android.nostr.FriendRequestDirection
 import com.bitchat.android.nostr.FriendRequestStatus
 import com.bitchat.android.ui.ChatViewModel
+import com.bitchat.android.ui.PrivateChatContent
 import com.bitchat.android.ui.LocationChannelsSheet
 import com.bitchat.android.ui.MeshPeerListSheet
 import com.bitchat.android.ui.PrivateChatSheet
@@ -88,6 +95,24 @@ import com.bitchat.android.ui.debug.DebugSettingsSheet
  *   debug) are rendered here too, so Discover and Me can open them
  *   without mounting the timeline.
  */
+
+/**
+ * The shell shows one full-screen page at a time. Home is the only
+ * depth-0 page; every other page is depth 1, which is all the slide
+ * transition needs: pushing a page slides in from the right, popping
+ * back to home slides out to the right.
+ */
+private sealed interface LinkzPage {
+    data object Home : LinkzPage
+    data object Timeline : LinkzPage
+    data class Dm(val peerID: String) : LinkzPage
+    data object Profile : LinkzPage
+    data object InviteCode : LinkzPage
+    data object NewFriends : LinkzPage
+    data object DebugLogs : LinkzPage
+    data object Settings : LinkzPage
+}
+
 @Composable
 fun LinkzShell(viewModel: ChatViewModel) {
     val conversations by viewModel.conversations.collectAsStateWithLifecycle()
@@ -127,132 +152,180 @@ fun LinkzShell(viewModel: ChatViewModel) {
         selectedLocationChannel is ChannelID.Location ||
         showMeshTimeline
 
-    if (inTimeline) {
-        // The timeline surface is the existing ChatScreen, unchanged.
-        // Back returns to the tab list instead of leaving the app.
-        BackHandler {
-            when {
-                showMeshTimeline -> showMeshTimeline = false
-                currentChannel != null -> viewModel.switchToChannel(null)
-                selectedLocationChannel is ChannelID.Location ->
-                    viewModel.selectLocationChannel(ChannelID.Mesh)
-            }
-        }
-        ChatScreen(viewModel = viewModel)
-        return
-    }
-
     val totalUnread = conversations.sumOf { it.unreadCount } +
         unreadChannelMessages.values.sum()
 
-    // Profile and Settings are pushed pages, not tabs: no bottom bar,
-    // back returns to the tab list. Sheets below still render, so rows
-    // in either page can open the QR and about sheets.
-    if (showProfile) {
-        BackHandler { showProfile = false }
-        LinkzProfileScreen(
-            viewModel = viewModel,
-            nickname = nickname,
-            onBack = { showProfile = false },
-            // Opening a pushed page from Profile closes Profile too:
-            // the chain below is if/else-if, so leaving showProfile
-            // true would keep rendering Profile instead of the new page.
-            onShowInviteCode = { showProfile = false; showInviteCode = true },
-            onShowDebugLogs = { showProfile = false; showDebugLogs = true }
-        )
-    } else if (showInviteCode) {
-        BackHandler { showInviteCode = false }
-        LinkzInviteCodeScreen(
-            viewModel = viewModel,
-            onBack = { showInviteCode = false }
-        )
-    } else if (showNewFriends) {
-        BackHandler { showNewFriends = false }
-        LinkzNewFriendsScreen(
-            viewModel = viewModel,
-            onBack = { showNewFriends = false }
-        )
-    } else if (showDebugLogs) {
-        BackHandler { showDebugLogs = false }
-        LinkzDebugLogScreen(
-            onBack = { showDebugLogs = false }
-        )
-    } else if (showSettings) {
-        BackHandler { showSettings = false }
-        LinkzSettingsScreen(
-            onBack = { showSettings = false },
-            onShowDebug = { showDebugSheet = true },
-            onShowAbout = { viewModel.showAppInfo() },
-            onShowPanicDialog = { showPanicDialog = true },
-            onShowBlocked = {
-                showSettings = false
-                selectedTabIndex = LinkzTab.entries.indexOf(LinkzTab.CONTACTS)
+    // One full-screen page at a time, like WeChat: opening a chat or a
+    // pushed page slides in from the right, going back slides out to the
+    // right. A DM opened from home is a page too — the bottom-sheet DM
+    // only survives when it opens over a channel timeline.
+    val page: LinkzPage = when {
+        privateChatSheetPeer != null && !inTimeline ->
+            LinkzPage.Dm(privateChatSheetPeer!!)
+        inTimeline -> LinkzPage.Timeline
+        showProfile -> LinkzPage.Profile
+        showInviteCode -> LinkzPage.InviteCode
+        showNewFriends -> LinkzPage.NewFriends
+        showDebugLogs -> LinkzPage.DebugLogs
+        showSettings -> LinkzPage.Settings
+        else -> LinkzPage.Home
+    }
+
+    AnimatedContent(
+        targetState = page,
+        transitionSpec = {
+            val slide = tween<IntOffset>(300)
+            if (targetState == LinkzPage.Home) {
+                // Popping back: home slides in from the left, the page out to the right.
+                slideInHorizontally(slide) { -it } togetherWith
+                    slideOutHorizontally(slide) { it }
+            } else {
+                // Pushing: the page slides in from the right, home out to the left.
+                slideInHorizontally(slide) { it } togetherWith
+                    slideOutHorizontally(slide) { -it }
             }
-        )
-    } else {
-        Scaffold(
-            modifier = Modifier.fillMaxSize(),
-            containerColor = MaterialTheme.colorScheme.background,
-            bottomBar = {
-                LinkzBottomNav(
-                    selected = selectedTab,
-                    onSelect = { selectedTabIndex = LinkzTab.entries.indexOf(it) },
-                    totalUnread = totalUnread
+        },
+        modifier = Modifier.fillMaxSize(),
+        label = "linkz-page"
+    ) { currentPage ->
+        when (currentPage) {
+            LinkzPage.Timeline -> {
+                // Back returns to the tab list instead of leaving the app.
+                BackHandler {
+                    when {
+                        showMeshTimeline -> showMeshTimeline = false
+                        currentChannel != null -> viewModel.switchToChannel(null)
+                        selectedLocationChannel is ChannelID.Location ->
+                            viewModel.selectLocationChannel(ChannelID.Mesh)
+                    }
+                }
+                ChatScreen(viewModel = viewModel)
+            }
+            is LinkzPage.Dm -> {
+                val dismissDm = {
+                    viewModel.hidePrivateChatSheet()
+                    viewModel.endPrivateChat()
+                }
+                BackHandler { dismissDm() }
+                PrivateChatContent(
+                    peerID = currentPage.peerID,
+                    viewModel = viewModel,
+                    onDismiss = dismissDm,
+                    isFullScreen = true
                 )
             }
-        ) { innerPadding ->
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-            ) {
-                when (selectedTab) {
-                    LinkzTab.CHATS -> LinkzChatsTab(
-                        viewModel = viewModel,
-                        conversations = conversations,
-                        connectedPeers = connectedPeers,
-                        peerNicknames = peerNicknames,
-                        peerFingerprints = peerFingerprints,
-                        joinedChannels = joinedChannels,
-                        isConnected = isConnected,
-                        remarksTick = remarksTick,
-                        privateChats = privateChats,
-                        totalUnread = totalUnread,
-                        onOpenMeshTimeline = { showMeshTimeline = true },
-                        onShowInviteCode = { showInviteCode = true },
-                        onShowNewFriends = { showNewFriends = true }
-                    )
-                    LinkzTab.CONTACTS -> LinkzContactsTab(
-                        viewModel = viewModel,
-                        connectedPeers = connectedPeers,
-                        peerNicknames = peerNicknames,
-                        favoritePeers = favoritePeers,
-                        peerFingerprints = peerFingerprints,
-                        conversations = conversations,
-                        remarksTick = remarksTick,
-                        onShowInviteCode = { showInviteCode = true },
-                        onShowNewFriends = { showNewFriends = true }
-                    )
-                    LinkzTab.DISCOVER -> LinkzDiscoverTab(
-                        viewModel = viewModel,
-                        connectedPeersCount = connectedPeers.size,
-                        joinedChannels = joinedChannels,
-                        onOpenMeshTimeline = { showMeshTimeline = true },
-                        onShowLocationChannels = { showLocationChannelsSheet = true }
-                    )
-                    LinkzTab.ME -> LinkzMeTab(
-                        viewModel = viewModel,
-                        nickname = nickname,
-                        isConnected = isConnected,
-                        nearbyCount = connectedPeers.size,
-                        profileTick = profileTick,
-                        onShowProfile = { showProfile = true },
-                        onShowSettings = { showSettings = true },
-                        onShowFavorites = {
-                            selectedTabIndex = LinkzTab.entries.indexOf(LinkzTab.CONTACTS)
-                        }
+            LinkzPage.Profile -> {
+                BackHandler { showProfile = false }
+                LinkzProfileScreen(
+                    viewModel = viewModel,
+                    nickname = nickname,
+                    onBack = { showProfile = false },
+                    // Opening a pushed page from Profile closes Profile too:
+                    // the chain below is a when, so leaving showProfile
+                    // true would keep rendering Profile instead of the new page.
+                    onShowInviteCode = { showProfile = false; showInviteCode = true },
+                    onShowDebugLogs = { showProfile = false; showDebugLogs = true }
+                )
+            }
+            LinkzPage.InviteCode -> {
+                BackHandler { showInviteCode = false }
+                LinkzInviteCodeScreen(
+                    viewModel = viewModel,
+                    onBack = { showInviteCode = false }
+                )
+            }
+            LinkzPage.NewFriends -> {
+                BackHandler { showNewFriends = false }
+                LinkzNewFriendsScreen(
+                    viewModel = viewModel,
+                    onBack = { showNewFriends = false }
+                )
+            }
+            LinkzPage.DebugLogs -> {
+                BackHandler { showDebugLogs = false }
+                LinkzDebugLogScreen(
+                    onBack = { showDebugLogs = false }
+                )
+            }
+            LinkzPage.Settings -> {
+                BackHandler { showSettings = false }
+                LinkzSettingsScreen(
+                    onBack = { showSettings = false },
+                    onShowDebug = { showDebugSheet = true },
+                    onShowAbout = { viewModel.showAppInfo() },
+                    onShowPanicDialog = { showPanicDialog = true },
+                    onShowBlocked = {
+                        showSettings = false
+                        selectedTabIndex = LinkzTab.entries.indexOf(LinkzTab.CONTACTS)
+                    }
+                )
+            }
+            LinkzPage.Home -> {
+            Scaffold(
+                modifier = Modifier.fillMaxSize(),
+                containerColor = MaterialTheme.colorScheme.surface,
+                bottomBar = {
+                    LinkzBottomNav(
+                        selected = selectedTab,
+                        onSelect = { selectedTabIndex = LinkzTab.entries.indexOf(it) },
+                        totalUnread = totalUnread
                     )
                 }
+            ) { innerPadding ->
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding)
+                ) {
+                    when (selectedTab) {
+                        LinkzTab.CHATS -> LinkzChatsTab(
+                            viewModel = viewModel,
+                            conversations = conversations,
+                            connectedPeers = connectedPeers,
+                            peerNicknames = peerNicknames,
+                            peerFingerprints = peerFingerprints,
+                            joinedChannels = joinedChannels,
+                            isConnected = isConnected,
+                            remarksTick = remarksTick,
+                            privateChats = privateChats,
+                            totalUnread = totalUnread,
+                            onOpenMeshTimeline = { showMeshTimeline = true },
+                            onShowInviteCode = { showInviteCode = true },
+                            onShowNewFriends = { showNewFriends = true }
+                        )
+                        LinkzTab.CONTACTS -> LinkzContactsTab(
+                            viewModel = viewModel,
+                            connectedPeers = connectedPeers,
+                            peerNicknames = peerNicknames,
+                            favoritePeers = favoritePeers,
+                            peerFingerprints = peerFingerprints,
+                            conversations = conversations,
+                            remarksTick = remarksTick,
+                            onShowInviteCode = { showInviteCode = true },
+                            onShowNewFriends = { showNewFriends = true }
+                        )
+                        LinkzTab.DISCOVER -> LinkzDiscoverTab(
+                            viewModel = viewModel,
+                            connectedPeersCount = connectedPeers.size,
+                            joinedChannels = joinedChannels,
+                            onOpenMeshTimeline = { showMeshTimeline = true },
+                            onShowLocationChannels = { showLocationChannelsSheet = true }
+                        )
+                        LinkzTab.ME -> LinkzMeTab(
+                            viewModel = viewModel,
+                            nickname = nickname,
+                            isConnected = isConnected,
+                            nearbyCount = connectedPeers.size,
+                            profileTick = profileTick,
+                            onShowProfile = { showProfile = true },
+                            onShowSettings = { showSettings = true },
+                            onShowFavorites = {
+                                selectedTabIndex = LinkzTab.entries.indexOf(LinkzTab.CONTACTS)
+                            }
+                        )
+                    }
+                }
+            }
             }
         }
     }
@@ -316,17 +389,9 @@ fun LinkzShell(viewModel: ChatViewModel) {
             viewModel = viewModel
         )
     }
-    if (privateChatSheetPeer != null) {
-        PrivateChatSheet(
-            isPresented = true,
-            peerID = privateChatSheetPeer!!,
-            viewModel = viewModel,
-            onDismiss = {
-                viewModel.hidePrivateChatSheet()
-                viewModel.endPrivateChat()
-            }
-        )
-    }
+    // The DM is a full-screen page now (the Dm arm above) when opened
+    // from home; the sheet survives only over a channel timeline, where
+    // ChatScreen mounts it. So there is no sheet mount here any more.
     if (showPanicDialog) {
         AlertDialog(
             onDismissRequest = { showPanicDialog = false },
@@ -377,9 +442,13 @@ private fun LinkzSearchField(
             focusedIndicatorColor = Color.Transparent,
             unfocusedIndicatorColor = Color.Transparent
         ),
+        // WeChat's search field is ~36dp tall (was the 56dp TextField
+        // default + 16dp padding = 72dp); the explicit height overrides
+        // the TextField's internal 56dp minimum.
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 8.dp)
+            .padding(horizontal = 12.dp, vertical = 4.dp)
+            .height(36.dp)
             .semantics { contentDescription = "Search chats" }
     )
 }
