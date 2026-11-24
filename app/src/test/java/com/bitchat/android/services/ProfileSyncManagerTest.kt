@@ -2,11 +2,14 @@ package com.bitchat.android.services
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import com.bitchat.android.favorites.FavoriteRelationship
 import com.bitchat.android.model.NoisePayloadType
 import com.bitchat.android.model.ProfileSync
 import com.bitchat.android.ui.DataManager
+import java.util.Date
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -62,5 +65,69 @@ class ProfileSyncManagerTest {
         // Control: claiming the announced version only gets another announce.
         val (typeForNew, _) = manager.replyForRequest(peerID, 2L)!!
         assertEquals(NoisePayloadType.PROFILE_ANNOUNCE, typeForNew)
+    }
+
+    private fun relationship(
+        noiseKey: ByteArray,
+        isFavorite: Boolean,
+        theyFavoritedUs: Boolean
+    ) = FavoriteRelationship(
+        peerNoisePublicKey = noiseKey,
+        peerNostrPublicKey = null,
+        peerNickname = "Bob",
+        isFavorite = isFavorite,
+        theyFavoritedUs = theyFavoritedUs,
+        favoritedAt = Date(),
+        lastUpdated = Date()
+    )
+
+    /**
+     * Robolectric test for the announce-recipients bug: the profile-change
+     * announce was pushed only to DataManager.favoritePeers, which the
+     * Friend Code accept path never writes — it only updates
+     * FavoritesPersistenceService. So for every friend added via Friend
+     * Code the recipient set was empty, the announce never left the phone,
+     * and their photo never synced even though DMs worked (they gate on
+     * the persistence service, a separate store).
+     */
+    @Test
+    fun `announce recipients include mutual favorites when DataManager favorites are empty`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val dataManager = DataManager(context)
+        val manager = ProfileSyncManager.getInstance(context)
+
+        // Precondition: no manually starred peers — exactly the state of a
+        // friend added via Friend Code, which never calls addFavorite.
+        // With the old recipients (DataManager favorites only) the announce
+        // would go nowhere.
+        assertTrue(dataManager.favoritePeers.isEmpty())
+
+        val noiseKey = ByteArray(32) { (it * 7 + 3).toByte() }
+        val mutual = relationship(noiseKey, isFavorite = true, theyFavoritedUs = true)
+
+        val recipients = manager.announceRecipientPeerIDs(emptySet(), listOf(mutual))
+        assertEquals(setOf(ContactIdentityResolver.noiseKeyHex(noiseKey)), recipients)
+    }
+
+    @Test
+    fun `announce recipients exclude non-mutual favorites`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val manager = ProfileSyncManager.getInstance(context)
+
+        val noiseKey = ByteArray(32) { (it * 7 + 3).toByte() }
+        // We favorited them but they did not favorite us back: not mutual,
+        // so no announce — same set DMs require.
+        val oneWay = relationship(noiseKey, isFavorite = true, theyFavoritedUs = false)
+
+        assertTrue(manager.announceRecipientPeerIDs(emptySet(), listOf(oneWay)).isEmpty())
+    }
+
+    @Test
+    fun `announce recipients keep manually starred peers`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val manager = ProfileSyncManager.getInstance(context)
+
+        val recipients = manager.announceRecipientPeerIDs(setOf("0123456789abcdef"), emptyList())
+        assertEquals(setOf("0123456789abcdef"), recipients)
     }
 }

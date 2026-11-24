@@ -2,6 +2,8 @@ package com.bitchat.android.services
 
 import android.content.Context
 import android.util.Log
+import com.bitchat.android.favorites.FavoriteRelationship
+import com.bitchat.android.favorites.FavoritesPersistenceService
 import com.bitchat.android.model.NoisePayloadType
 import com.bitchat.android.model.ProfileSync
 import com.bitchat.android.model.ProfileSyncHandler
@@ -258,6 +260,32 @@ class ProfileSyncManager private constructor(
     }
 
     /**
+     * Peer IDs the profile-change announce is pushed to: the union of the
+     * manually starred peers (DataManager) and the mutual favorites
+     * (FavoritesPersistenceService). The Friend Code accept path only writes
+     * the latter, so DataManager favorites alone miss every friend added
+     * via Friend Code — the announce then goes nowhere and their photo
+     * never syncs, even though DMs work (they gate on the persistence
+     * service, a separate store). Mutual favorites are identified by Noise
+     * key hex, which NostrTransport.resolveNostrPublicKey can address.
+     * Both sources are parameters (defaulting to the live stores) so the
+     * union is unit-testable without the Nostr transport or the encrypted
+     * favorites store.
+     */
+    fun announceRecipientPeerIDs(
+        starredPeerIDs: Set<String> = dataManager.favoritePeers,
+        favoriteRelationships: List<FavoriteRelationship> = FavoritesPersistenceService.shared.getMutualFavorites()
+    ): Set<String> {
+        val recipients = starredPeerIDs.toMutableSet()
+        for (relationship in favoriteRelationships) {
+            if (relationship.isMutual) {
+                recipients += ContactIdentityResolver.noiseKeyHex(relationship.peerNoisePublicKey)
+            }
+        }
+        return recipients
+    }
+
+    /**
      * Push our (version, photo hash) to every favorite peer over Nostr after
      * a profile change. Peers whose cache is older fetch the full profile in
      * the background; peers that are current ignore it. BLE peers learn the
@@ -270,7 +298,7 @@ class ProfileSyncManager private constructor(
                 val transport = NostrTransport.getInstance(appContext)
                 val senderPeerID = transport.myPeerID
                 if (senderPeerID.isBlank()) return@launch
-                for (peerID in dataManager.favoritePeers) {
+                for (peerID in announceRecipientPeerIDs()) {
                     val embedded = NostrEmbeddedBitChat.encodeProfilePacketForNostr(
                         NoisePayloadType.PROFILE_ANNOUNCE, announce, peerID, senderPeerID
                     ) ?: continue
