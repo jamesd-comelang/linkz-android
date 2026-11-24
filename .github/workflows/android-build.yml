@@ -44,6 +44,9 @@ jobs:
           key: robolectric-m2-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
           restore-keys: |
             robolectric-m2-${{ runner.os }}-
+          # Save even when the tests fail: otherwise a run that flakes on the
+          # download banks nothing, and the next run starts cold again.
+          save-always: true
 
       - name: Verify native library inputs
         run: tools/arti-build/verify-checksums.sh
