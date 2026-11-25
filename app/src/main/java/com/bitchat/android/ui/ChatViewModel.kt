@@ -321,7 +321,20 @@ class ChatViewModel(
         conversationLiveIdentityState,
         com.bitchat.android.services.AppStateStore.unreadPrivateMessageCounts,
         _peerProfileNicknames
-    ) { unreadConversationIDs, chats, currentNickname, liveIdentity, unreadCounts, cachedNicknames ->
+    ) { values ->
+        // The 6-flow typed combine overload does not resolve here (the
+        // compiler picks the vararg overload), so unpack the values
+        // explicitly. Order matches the flows above.
+        @Suppress("UNCHECKED_CAST")
+        val unreadConversationIDs = values[0] as Set<String>
+        @Suppress("UNCHECKED_CAST")
+        val chats = values[1] as Map<String, List<BitchatMessage>>
+        val currentNickname = values[2] as String
+        val liveIdentity = values[3] as ConversationLiveIdentityState
+        @Suppress("UNCHECKED_CAST")
+        val unreadCounts = values[4] as Map<String, Int>
+        @Suppress("UNCHECKED_CAST")
+        val cachedNicknames = values[5] as Map<String, String>
         val seenStore = seenMessageStore
         val connectedPeerByIdentity = buildMap {
             liveIdentity.connectedPeerIDs.forEach { peerID ->
