@@ -118,6 +118,11 @@ class MessageHandler(private val myPeerID: String, private val appContext: andro
                     profileSyncHandler?.onProfileChunk(peerID, noisePayload.data)
                 }
 
+                // Nostr-only: media chunks reassemble in the Nostr
+                // handler and never arrive over BLE; drop if one does.
+                com.bitchat.android.model.NoisePayloadType.FILE_TRANSFER_CHUNK -> {
+                }
+
                 com.bitchat.android.model.NoisePayloadType.PRIVATE_MESSAGE -> {
                     // Decode TLV private message exactly like iOS
                     val privateMessage = com.bitchat.android.model.PrivateMessagePacket.decode(noisePayload.data)

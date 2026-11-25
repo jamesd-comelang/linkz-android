@@ -39,7 +39,7 @@ val WeChatVoiceGlyph: ImageVector
                 strokeLineCap = StrokeCap.Round,
             ) {
                 moveTo(13.8f, 9.0f)
-                quadraticCurveTo(16.6f, 12.0f, 13.8f, 15.0f)
+                quadraticBezierTo(16.6f, 12.0f, 13.8f, 15.0f)
             }
             // Outer arc.
             path(
@@ -48,7 +48,7 @@ val WeChatVoiceGlyph: ImageVector
                 strokeLineCap = StrokeCap.Round,
             ) {
                 moveTo(16.2f, 6.6f)
-                quadraticCurveTo(20.0f, 12.0f, 16.2f, 17.4f)
+                quadraticBezierTo(20.0f, 12.0f, 16.2f, 17.4f)
             }
         }.build().also { _WeChatVoiceGlyph = it }
     }
