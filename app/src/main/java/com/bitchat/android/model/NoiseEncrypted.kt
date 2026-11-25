@@ -34,7 +34,9 @@ enum class NoisePayloadType(val value: UByte) {
     /** Profile sync: the full profile (nickname + photo bytes) in one payload. */
     PROFILE_RESPONSE(0x32u),
     /** Profile sync: one chunk of a PROFILE_RESPONSE, for the Nostr path. */
-    PROFILE_RESPONSE_CHUNK(0x33u);
+    PROFILE_RESPONSE_CHUNK(0x33u),
+    /** Private media over Nostr: one chunk of a FILE_TRANSFER payload, for the Nostr path. */
+    FILE_TRANSFER_CHUNK(0x34u);
 
 
     companion object {

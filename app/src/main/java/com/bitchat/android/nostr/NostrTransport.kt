@@ -307,23 +307,23 @@ class NostrTransport(
     }
     
     /**
-     * Send one profile-sync packet (already embedded as a `bitchat1:` string)
-     * to a peer over Nostr as a NIP-17 gift wrap. Fire-and-forget, like the
-     * other profile-independent sends here: no delivery guarantee, the peer
-     * retries from the next advertisement when it gets nothing.
+     * Gift-wrap one already-embedded `bitchat1:` packet and send it to a
+     * peer. Shared by the profile-sync and media paths: both resolve the
+     * recipient's Nostr pubkey the same way and both are fire-and-forget.
+     * [kind] is only for the log lines ("profile", "media").
      */
-    fun sendProfilePacket(embedded: String, to: String) {
+    private fun sendEmbeddedPacket(embedded: String, to: String, kind: String) {
         transportScope.launch {
             try {
                 val recipientNostrPubkey = resolveNostrPublicKey(to)
                 if (recipientNostrPubkey == null) {
-                    Log.w(TAG, "No Nostr public key found for profile packet to: $to")
+                    Log.w(TAG, "No Nostr public key found for $kind packet to: $to")
                     return@launch
                 }
 
                 val senderIdentity = NostrIdentityBridge.getCurrentNostrIdentity(context)
                 if (senderIdentity == null) {
-                    Log.e(TAG, "No Nostr identity available for profile packet")
+                    Log.e(TAG, "No Nostr identity available for $kind packet")
                     return@launch
                 }
 
@@ -341,9 +341,30 @@ class NostrTransport(
                     NostrRelayManager.getInstance(context).sendEvent(event)
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to send profile packet via Nostr: ${e.message}")
+                Log.e(TAG, "Failed to send $kind packet via Nostr: ${e.message}")
             }
         }
+    }
+
+    /**
+     * Send one profile-sync packet (already embedded as a `bitchat1:` string)
+     * to a peer over Nostr as a NIP-17 gift wrap. Fire-and-forget, like the
+     * other profile-independent sends here: no delivery guarantee, the peer
+     * retries from the next advertisement when it gets nothing.
+     */
+    fun sendProfilePacket(embedded: String, to: String) {
+        sendEmbeddedPacket(embedded, to, "profile")
+    }
+
+    /**
+     * Send one chunk of a private-media file packet (already embedded as a
+     * `bitchat1:` string) to a peer over Nostr as a NIP-17 gift wrap.
+     * Fire-and-forget, like the profile packets above: the receiver
+     * reassembles the chunks, and a missing chunk just means the file
+     * never displays — the sender retries by sending again.
+     */
+    fun sendMediaPacket(embedded: String, to: String) {
+        sendEmbeddedPacket(embedded, to, "media")
     }
 
     fun sendDeliveryAck(messageID: String, to: String) {

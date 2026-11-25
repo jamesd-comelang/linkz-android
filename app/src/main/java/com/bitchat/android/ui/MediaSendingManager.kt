@@ -6,6 +6,8 @@ import com.bitchat.android.model.BitchatFilePacket
 import com.bitchat.android.model.BitchatMessage
 import com.bitchat.android.model.BitchatMessageType
 import com.bitchat.android.mesh.PrivateMediaPreparation
+import com.bitchat.android.services.ContactDirectory
+import com.bitchat.android.services.NostrMediaSender
 import java.util.Date
 import java.security.MessageDigest
 import java.util.UUID
@@ -36,6 +38,7 @@ class MediaSendingManager(
     private val channelManager: ChannelManager,
     private val scope: CoroutineScope,
     private val mediaWorkDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val nostrMediaSender: NostrMediaSender? = null,
     private val getMeshService: () -> MeshService
 ) {
     // Helper to get current mesh service (may change after panic clear)
@@ -303,10 +306,7 @@ class MediaSendingManager(
         }
         val recipient = PrivateMediaRecipientResolver.resolve(toPeerID, meshService)
             ?: run {
-                addPrivateMediaSystemMessage(
-                    toPeerID,
-                    "Private media was not sent because this conversation has no active mesh route."
-                )
+                tryNostrMediaFallback(toPeerID, payload, filePath, messageType)
                 return
             }
 
@@ -328,6 +328,103 @@ class MediaSendingManager(
             return
         }
         evaluateAutomaticPending(pending)
+    }
+
+    /**
+     * No BLE mesh route to this peer. Voice notes and other private media
+     * can still travel over Nostr to a mutual favorite — the same
+     * gift-wrap path text DMs use — chunked so no single relay event
+     * gets large. Mesh stays the path whenever a route exists, and for
+     * files over the 1 MiB Nostr cap. Nostr is fire-and-forget like a
+     * text DM: the local echo is added durably first (so it is never
+     * shown unless it can survive a process death) and marked Sent,
+     * never Delivered.
+     */
+    private suspend fun tryNostrMediaFallback(
+        toPeerID: String,
+        payload: ByteArray,
+        filePath: String,
+        messageType: BitchatMessageType
+    ) {
+        val sender = nostrMediaSender
+        if (sender == null) {
+            Log.d(TAG, "No Nostr media sender; private media to ${toPeerID.take(8)} needs a mesh route")
+            addPrivateMediaSystemMessage(
+                toPeerID,
+                "Private media was not sent because this conversation has no active mesh route."
+            )
+            return
+        }
+        if (payload.size > NostrMediaSender.MAX_NOSTR_MEDIA_BYTES) {
+            Log.d(TAG, "Private media to ${toPeerID.take(8)} is ${payload.size} bytes, over the Nostr cap; needs a mesh route")
+            addPrivateMediaSystemMessage(
+                toPeerID,
+                "Private media was not sent because this conversation has no active mesh route."
+            )
+            return
+        }
+        if (!sender.canSendViaNostr(toPeerID)) {
+            Log.d(TAG, "No mesh route and no Nostr route (not a mutual favorite) for ${toPeerID.take(8)}")
+            addPrivateMediaSystemMessage(
+                toPeerID,
+                "Private media was not sent because this conversation has no active mesh route."
+            )
+            return
+        }
+        val senderPeerID = meshService.myPeerID
+        if (senderPeerID.isBlank()) {
+            Log.w(TAG, "No own peer ID for Nostr media send to ${toPeerID.take(8)}")
+            addPrivateMediaSystemMessage(
+                toPeerID,
+                "Private media was not sent because this conversation has no active mesh route."
+            )
+            return
+        }
+        // Encode all chunks up front: a systematic encode failure must not
+        // produce a Sent echo for a send that never went out.
+        val chunks = withContext(mediaWorkDispatcher) {
+            sender.encodeChunks(toPeerID, senderPeerID, payload)
+        }
+        if (chunks.isNullOrEmpty()) {
+            Log.w(TAG, "Failed to encode private media for Nostr send to ${toPeerID.take(8)}")
+            addPrivateMediaSystemMessage(
+                toPeerID,
+                "Private media was not sent because it could not be prepared for sending."
+            )
+            return
+        }
+        Log.d(TAG, "No mesh route to ${toPeerID.take(8)}; sending ${payload.size}-byte private media over Nostr in ${chunks.size} chunks")
+
+        val msg = BitchatMessage(
+            id = UUID.randomUUID().toString().uppercase(),
+            sender = state.getNicknameValue() ?: "me",
+            content = filePath,
+            type = messageType,
+            timestamp = Date(),
+            isRelay = false,
+            isPrivate = true,
+            recipientNickname = try {
+                ContactDirectory.resolve(toPeerID).displayName
+            } catch (_: Exception) {
+                null
+            },
+            senderPeerID = senderPeerID
+        )
+        if (!messageManager.addPrivateMessageDurably(toPeerID, msg, forceRead = true)) {
+            Log.e(TAG, "Nostr private-media message could not be persisted; send aborted")
+            addPrivateMediaSystemMessage(
+                toPeerID,
+                "Private media was not sent because the conversation could not be saved."
+            )
+            return
+        }
+        messageManager.updateMessageDeliveryStatus(
+            msg.id,
+            com.bitchat.android.model.DeliveryStatus.Sent
+        )
+        scope.launch {
+            sender.sendChunks(chunks, toPeerID)
+        }
     }
 
     /**

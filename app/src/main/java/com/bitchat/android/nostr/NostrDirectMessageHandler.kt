@@ -40,6 +40,11 @@ class NostrDirectMessageHandler(
 
     private val seenStore by lazy(seenStoreProvider)
 
+    // Reassembly for chunked private media arriving over Nostr (one
+    // transferId per send; keyed by the random UUID, so concurrent sends
+    // from different peers do not mix).
+    private val mediaReassembly = com.bitchat.android.model.ChunkedPayload.Reassembly()
+
     // Simple event deduplication
     private val processedIds = ArrayDeque<String>()
     private val seen = HashSet<String>()
@@ -265,6 +270,55 @@ class NostrDirectMessageHandler(
         }
     }
 
+    /**
+     * Handle one complete file packet received over Nostr — either a whole
+     * FILE_TRANSFER payload, or a FILE_TRANSFER_CHUNK stream reassembled
+     * by [mediaReassembly]. Same save + message path for both, so a voice
+     * note arriving over Nostr displays exactly like one from the mesh.
+     */
+    private suspend fun handleFileTransferPayload(
+        data: ByteArray,
+        conversationID: String,
+        senderNickname: String,
+        timestamp: Date,
+        senderPubkey: String
+    ) {
+        // Properly handle encrypted file transfer
+        val file = BitchatFilePacket.decode(data)
+        if (file != null) {
+            val uniqueMsgId = java.util.UUID.randomUUID().toString().uppercase()
+            val savedPath = com.bitchat.android.features.file.FileUtils.saveIncomingFile(application, file)
+            val message = BitchatMessage(
+                id = uniqueMsgId,
+                sender = senderNickname,
+                content = savedPath,
+                type = com.bitchat.android.features.file.FileUtils.messageTypeForMime(file.mimeType),
+                timestamp = timestamp,
+                isRelay = false,
+                isPrivate = true,
+                recipientNickname = state.getNicknameValue(),
+                senderPeerID = conversationID,
+                senderNostrPubkey = senderPubkey
+            )
+            Log.d(TAG, "📄 Saved Nostr encrypted incoming file to $savedPath (msgId=$uniqueMsgId)")
+            val admitted = withContext(Dispatchers.Main) {
+                privateChatManager.handleIncomingPrivateMessageDurably(
+                    message = message,
+                    suppressUnread = false,
+                    origin = PrivateMessageOrigin.NOSTR
+                )
+            }
+            if (!admitted) {
+                com.bitchat.android.features.file.FileUtils.deleteStoredMediaPaths(
+                    application,
+                    listOf(savedPath)
+                )
+            }
+        } else {
+            Log.w(TAG, "Failed to decode Nostr file transfer from $conversationID")
+        }
+    }
+
     private suspend fun processNoisePayload(
         payload: NoisePayload,
         conversationID: String,
@@ -354,40 +408,25 @@ class NostrDirectMessageHandler(
                 }
             }
             NoisePayloadType.FILE_TRANSFER -> {
-                // Properly handle encrypted file transfer
-                val file = BitchatFilePacket.decode(payload.data)
-                if (file != null) {
-                    val uniqueMsgId = java.util.UUID.randomUUID().toString().uppercase()
-                    val savedPath = com.bitchat.android.features.file.FileUtils.saveIncomingFile(application, file)
-                    val message = BitchatMessage(
-                        id = uniqueMsgId,
-                        sender = senderNickname,
-                        content = savedPath,
-                        type = com.bitchat.android.features.file.FileUtils.messageTypeForMime(file.mimeType),
-                        timestamp = timestamp,
-                        isRelay = false,
-                        isPrivate = true,
-                        recipientNickname = state.getNicknameValue(),
-                        senderPeerID = conversationID,
-                        senderNostrPubkey = senderPubkey
-                    )
-                    Log.d(TAG, "📄 Saved Nostr encrypted incoming file to $savedPath (msgId=$uniqueMsgId)")
-                    val admitted = withContext(Dispatchers.Main) {
-                        privateChatManager.handleIncomingPrivateMessageDurably(
-                            message = message,
-                            suppressUnread = false,
-                            origin = PrivateMessageOrigin.NOSTR
-                        )
-                    }
-                    if (!admitted) {
-                        com.bitchat.android.features.file.FileUtils.deleteStoredMediaPaths(
-                            application,
-                            listOf(savedPath)
-                        )
-                    }
-                } else {
-                    Log.w(TAG, "Failed to decode Nostr file transfer from $conversationID")
+                handleFileTransferPayload(payload.data, conversationID, senderNickname, timestamp, senderPubkey)
+            }
+            NoisePayloadType.FILE_TRANSFER_CHUNK -> {
+                // Chunked private media over Nostr (voice notes / images /
+                // files sent when the sender has no mesh route). Strangers
+                // drop here, like the profile-sync branches: only a known
+                // favorite resolves to a peer ID.
+                val peerID = com.bitchat.android.favorites.FavoritesPersistenceService.shared
+                    .findPeerIDForNostrPubkey(senderPubkey) ?: return
+                val chunk = com.bitchat.android.model.ChunkedPayload.decodeChunk(
+                    payload.data,
+                    com.bitchat.android.services.NostrMediaSender.MAX_NOSTR_MEDIA_BYTES
+                ) ?: run {
+                    Log.w(TAG, "Dropping malformed media chunk from ${peerID.take(8)}")
+                    return
                 }
+                val completed = mediaReassembly.add(chunk) ?: return
+                Log.d(TAG, "Reassembled ${completed.size}-byte media file from ${peerID.take(8)} (${chunk.total} chunks)")
+                handleFileTransferPayload(completed, conversationID, senderNickname, timestamp, senderPubkey)
             }
             // Profile sync (lazy avatar sync): only for peers we know. The
             // sender's Nostr pubkey must resolve to a mesh peer ID (a

@@ -38,6 +38,7 @@ import com.bitchat.android.nostr.NostrTransport
 import com.bitchat.android.nostr.GeohashConversationRegistry
 import com.bitchat.android.protocol.BitchatPacket
 import com.bitchat.android.services.AppStateStore
+import com.bitchat.android.services.NostrMediaSender
 
 
 import kotlinx.coroutines.launch
@@ -225,12 +226,19 @@ class ChatViewModel(
     )
     val verifiedFingerprints = verificationHandler.verifiedFingerprints
 
-    // Media file sending manager
+    // Media file sending manager. The Nostr sender is the fallback for
+    // private media when no BLE mesh route exists (two copies on one
+    // phone, or a remote mutual favorite): voice notes ride the same
+    // gift-wrap path as text DMs, chunked.
     private val mediaSendingManager = MediaSendingManager(
         state,
         messageManager,
         channelManager,
-        viewModelScope
+        viewModelScope,
+        nostrMediaSender = NostrMediaSender(sendPacket = { embedded, to ->
+            NostrTransport.getInstance(application.applicationContext)
+                .sendMediaPacket(embedded, to)
+        })
     ) { mesh }
     
     // Delegate handler for mesh callbacks

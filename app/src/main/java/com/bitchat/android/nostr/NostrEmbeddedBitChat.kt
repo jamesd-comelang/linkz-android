@@ -22,14 +22,14 @@ object NostrEmbeddedBitChat {
     private val secureRandom = SecureRandom()
     
     /**
-     * Encode a profile-sync payload as a Nostr DM envelope.
+     * Encode any Noise payload as a Nostr DM envelope.
      *
-     * Like [encodePMForNostr] but for [NoisePayloadType.PROFILE_REQUEST] /
-     * PROFILE_ANNOUNCE / PROFILE_RESPONSE / PROFILE_RESPONSE_CHUNK instead of
-     * a chat message. Returns null when either peer ID is blank or encoding
-     * fails.
+     * Builds a `bitchat1:` base64url-encoded BitChat packet carrying the
+     * given [NoisePayloadType] (PROFILE_REQUEST / PROFILE_ANNOUNCE /
+     * PROFILE_RESPONSE / PROFILE_RESPONSE_CHUNK, FILE_TRANSFER_CHUNK, ...).
+     * Returns null when either peer ID is blank or encoding fails.
      */
-    fun encodeProfilePacketForNostr(
+    fun encodePacketForNostr(
         type: NoisePayloadType,
         data: ByteArray,
         recipientPeerID: String,
@@ -55,10 +55,25 @@ object NostrEmbeddedBitChat {
             val data = packet.toBinaryData() ?: return null
             return "bitchat1:" + base64URLEncode(data)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to encode profile packet for Nostr: ${e.message}")
+            Log.e(TAG, "Failed to encode packet for Nostr: ${e.message}")
             null
         }
     }
+
+    /**
+     * Encode a profile-sync payload as a Nostr DM envelope.
+     *
+     * Like [encodePMForNostr] but for [NoisePayloadType.PROFILE_REQUEST] /
+     * PROFILE_ANNOUNCE / PROFILE_RESPONSE / PROFILE_RESPONSE_CHUNK instead of
+     * a chat message. Returns null when either peer ID is blank or encoding
+     * fails.
+     */
+    fun encodeProfilePacketForNostr(
+        type: NoisePayloadType,
+        data: ByteArray,
+        recipientPeerID: String,
+        senderPeerID: String
+    ): String? = encodePacketForNostr(type, data, recipientPeerID, senderPeerID)
 
     /**
      * Build a `bitchat1:` base64url-encoded BitChat packet carrying a private message for Nostr DMs.
