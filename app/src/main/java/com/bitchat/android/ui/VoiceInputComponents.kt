@@ -54,8 +54,8 @@ private const val HoldToRecordMs = 220L
  */
 private const val ArmDelayMs = 350L
 
-/** Hard cap on a single recording. */
-private const val MaxRecordingMs = 10_000L
+/** Hard cap on a single recording: 60 seconds, WeChat's limit. Holding past it sends. */
+private const val MaxRecordingMs = 60_000L
 
 /** Tail kept after release so the last syllable is not clipped. */
 private const val ReleaseTailMs = 500L

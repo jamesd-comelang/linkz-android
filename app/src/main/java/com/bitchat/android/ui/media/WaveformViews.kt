@@ -2,11 +2,9 @@ package com.bitchat.android.ui.media
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.snapshots.SnapshotStateList
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.getValue
@@ -19,9 +17,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
-import com.bitchat.android.features.voice.AudioWaveformExtractor
-import com.bitchat.android.features.voice.VoiceWaveformCache
-import com.bitchat.android.features.voice.resampleWave
 
 @Composable
 fun ScrollingWaveformRecorder(
@@ -43,49 +38,6 @@ fun ScrollingWaveformRecorder(
         }
     }
     WaveformCanvas(modifier = modifier, samples = samples, fillProgress = 1f, baseColor = Color(0xFF444444), fillColor = Color(0xFF00FF7F))
-}
-
-@Composable
-fun WaveformPreview(
-    modifier: Modifier = Modifier,
-    path: String,
-    sendProgress: Float?,
-    playbackProgress: Float?,
-    // Unplayed bars follow the surrounding text colour so they read on any bubble tint or
-    // surface; the played portion uses the theme accent, which is tuned per light/dark scheme.
-    baseColor: Color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f),
-    playedColor: Color = MaterialTheme.colorScheme.primary,
-    onLoaded: ((FloatArray) -> Unit)? = null,
-    onSeek: ((Float) -> Unit)? = null
-) {
-    val cached = remember(path) { VoiceWaveformCache.get(path) }
-    val stateSamples = remember { mutableStateListOf<Float>() }
-    val progress = (sendProgress ?: playbackProgress)?.coerceIn(0f, 1f) ?: 0f
-    LaunchedEffect(cached) {
-        if (cached != null) {
-            val normalized = if (cached.size != 120) resampleWave(cached, 120) else cached
-            stateSamples.clear(); stateSamples.addAll(normalized.toList())
-        } else {
-            AudioWaveformExtractor.extractAsync(path, sampleCount = 120) { arr ->
-                if (arr != null) {
-                    VoiceWaveformCache.put(path, arr)
-                    stateSamples.clear(); stateSamples.addAll(arr.toList())
-                    onLoaded?.invoke(arr)
-                }
-            }
-        }
-    }
-    WaveformCanvas(
-        modifier = modifier,
-        samples = stateSamples,
-        fillProgress = if (stateSamples.isEmpty()) 0f else progress,
-        baseColor = baseColor,
-        fillColor = when {
-            sendProgress != null -> Color(0xFF1E88E5) // blue while sending
-            else -> playedColor
-        },
-        onSeek = onSeek
-    )
 }
 
 @Composable

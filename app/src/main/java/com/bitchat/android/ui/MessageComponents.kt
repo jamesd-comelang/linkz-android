@@ -100,7 +100,7 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 
 
-// VoiceNotePlayer moved to com.bitchat.android.ui.media.VoiceNotePlayer
+// WeChat-style voice bubble lives in com.bitchat.android.ui.media.WeChatVoiceBubble
 
 /**
  * Message display components for ChatScreen

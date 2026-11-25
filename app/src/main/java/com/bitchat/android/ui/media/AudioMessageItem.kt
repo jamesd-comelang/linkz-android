@@ -43,6 +43,7 @@ fun AudioMessageItem(
         .getInstance(context).liveMessageIDs.collectAsState()
     val isLive = message.id in liveMessageIDs
     val path = message.content.trim()
+    val isSelf = message.isFromSelf(currentUserNickname, meshService.myPeerID)
     // Derive sending progress if applicable
     val (overrideProgress, overrideColor) = when (val st = message.deliveryStatus) {
         is com.bitchat.android.model.DeliveryStatus.PartiallyDelivered -> {
@@ -73,11 +74,11 @@ fun AudioMessageItem(
                         modifier = Modifier.padding(end = 8.dp)
                     )
                 }
-                VoiceNotePlayer(
+                WeChatVoiceBubble(
                     path = path,
+                    isSelf = isSelf,
                     progressOverride = overrideProgress,
                     progressColor = overrideColor,
-                    modifier = Modifier.widthIn(max = 260.dp)
                 )
                 val showCancel = message.sender == currentUserNickname && (message.deliveryStatus is com.bitchat.android.model.DeliveryStatus.PartiallyDelivered)
                 if (showCancel) {
@@ -138,8 +139,9 @@ fun AudioMessageItem(
                     modifier = Modifier.padding(end = 8.dp)
                 )
             }
-            VoiceNotePlayer(
+            WeChatVoiceBubble(
                 path = path,
+                isSelf = isSelf,
                 progressOverride = overrideProgress,
                 progressColor = overrideColor,
             )
