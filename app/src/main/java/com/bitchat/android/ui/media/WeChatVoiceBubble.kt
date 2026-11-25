@@ -48,7 +48,7 @@ internal fun voiceBubbleWidthDp(seconds: Int): Int =
     (90 + seconds * 3).coerceAtMost(210).coerceAtLeast(90)
 
 /** Duration label for a clip of [durationMs], e.g. `3"`. Empty until the file is prepared. */
-internal fun voiceDurationText(durationMs: Long): String {
+internal fun voiceDurationText(durationMs: Int): String {
     if (durationMs <= 0) return ""
     val seconds = ((durationMs + 500) / 1000).coerceAtLeast(1)
     return "$seconds\""
@@ -151,7 +151,7 @@ fun WeChatVoiceBubble(
     }
     DisposableEffect(Unit) { onDispose { try { player.release() } catch (_: Exception) {} } }
 
-    val seconds = ((durationMs + 500) / 1000).coerceAtLeast(0).toInt()
+    val seconds = ((durationMs + 500) / 1000).coerceAtLeast(0)
     val controlsEnabled = isPrepared && !isError && progressOverride == null
     // Blue while the clip is still sending, like the old player; theme text colour otherwise.
     val tint = progressColor ?: MaterialTheme.colorScheme.onSurface

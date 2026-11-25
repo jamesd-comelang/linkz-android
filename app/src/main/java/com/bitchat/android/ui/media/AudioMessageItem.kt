@@ -22,6 +22,7 @@ import com.bitchat.android.R
 import com.bitchat.android.core.ui.component.text.AnnotatedClickableText
 import com.bitchat.android.mesh.MeshService
 import com.bitchat.android.model.BitchatMessage
+import com.bitchat.android.ui.isFromSelf
 import androidx.compose.material3.ColorScheme
 import androidx.compose.ui.platform.LocalContext
 
