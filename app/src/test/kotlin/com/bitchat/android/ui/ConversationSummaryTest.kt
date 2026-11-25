@@ -337,6 +337,39 @@ class ConversationSummaryTest {
         )
     }
 
+    @Test
+    fun `voice preview shows audio label with seconds when duration known`() {
+        val clip = incoming("clip", "alice", 100L, content = "/x/voice.m4a", type = BitchatMessageType.Audio)
+        PrivateMessageArrivalOrder.record(clip.id)
+
+        val conversations = buildConversationSummaries(
+            unreadConversationIDs = emptySet(),
+            privateChats = mapOf("alice-peer" to listOf(clip)),
+            currentUserIdentifiers = setOf("me"),
+            canonicalize = { it },
+            isMessageRead = { true },
+            audioDurations = mapOf("clip" to 3)
+        )
+
+        assertEquals("[Audio] 3\"", conversations.single().latestMessagePreview)
+    }
+
+    @Test
+    fun `voice preview shows audio label without seconds when duration unknown`() {
+        val clip = incoming("clip", "alice", 100L, content = "/x/voice.m4a", type = BitchatMessageType.Audio)
+        PrivateMessageArrivalOrder.record(clip.id)
+
+        val conversations = buildConversationSummaries(
+            unreadConversationIDs = emptySet(),
+            privateChats = mapOf("alice-peer" to listOf(clip)),
+            currentUserIdentifiers = setOf("me"),
+            canonicalize = { it },
+            isMessageRead = { true }
+        )
+
+        assertEquals("[Audio]", conversations.single().latestMessagePreview)
+    }
+
     private fun incoming(
         id: String,
         sender: String,

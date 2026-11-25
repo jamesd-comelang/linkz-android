@@ -35,7 +35,10 @@ internal fun buildConversationSummaries(
     currentUserIdentifiers: Set<String>,
     canonicalize: (String) -> String,
     isMessageRead: (BitchatMessage) -> Boolean,
-    persistedUnreadCounts: Map<String, Int> = emptyMap()
+    persistedUnreadCounts: Map<String, Int> = emptyMap(),
+    // Voice-clip lengths by message id, probed once per clip (see
+    // AudioDurationCache). Without an entry the preview is just "[Audio]".
+    audioDurations: Map<String, Int> = emptyMap()
 ): List<ConversationSummary> {
     if (privateChats.isEmpty()) return emptyList()
 
@@ -118,7 +121,7 @@ internal fun buildConversationSummaries(
                 PrivateMessageArrivalOrder.receivedAtOf(latest.id) ?: latest.timestamp.time,
             latestActivityOrder = activityOrder(latest),
             latestMessageType = latest.type,
-            latestMessagePreview = latest.conversationPreview(),
+            latestMessagePreview = latest.conversationPreview(audioDurations[latest.id]),
             latestMessageIsOutgoing = isOutgoing(latest),
             latestDeliveryStatus = latest.deliveryStatus,
             transport = if (isNostrConversation) {
@@ -178,11 +181,12 @@ internal fun sortConversationSummaries(
 private fun isNostrConversationKey(value: String): Boolean =
     value.startsWith("nostr_") || value.startsWith("nostr:")
 
-private fun BitchatMessage.conversationPreview(): String {
+private fun BitchatMessage.conversationPreview(audioDurationSeconds: Int? = null): String {
     // WeChat-style labels: a voice note or photo shows its kind, not
-    // the file path or empty content behind it.
+    // the file path or empty content behind it. A voice note also shows
+    // its length in seconds, the way WeChat's Chats list does ("[Audio] 3\"").
     val preview = when (type) {
-        BitchatMessageType.Audio -> "[Voice]"
+        BitchatMessageType.Audio -> "[Audio]" + (audioDurationSeconds?.let { " $it\"" } ?: "")
         BitchatMessageType.Image -> "[Photo]"
         BitchatMessageType.File -> content
             .substringAfterLast('/')

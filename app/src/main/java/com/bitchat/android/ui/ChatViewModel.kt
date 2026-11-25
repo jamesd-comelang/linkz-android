@@ -52,6 +52,7 @@ import com.bitchat.android.noise.NoiseSession
 import com.bitchat.android.services.ContactDirectory
 import com.bitchat.android.services.ContactIdentityResolver
 import com.bitchat.android.util.hexEncodedString
+import com.bitchat.android.features.voice.AudioDurationCache
 import com.bitchat.android.features.voice.LiveVoicePreferences
 import com.bitchat.android.features.voice.LiveVoiceTarget
 import com.bitchat.android.features.voice.VoiceRecorder
@@ -327,15 +328,23 @@ class ChatViewModel(
     val peerProfileNicknames: StateFlow<Map<String, String>> =
         _peerProfileNicknames.asStateFlow()
 
+    // Voice-clip lengths by message id, for the Chats preview ("[Audio] 3\"").
+    // Probed once per new clip by observeAudioDurations below; the combine
+    // re-emits when a length lands, so the row fills in seconds after the
+    // clip itself appears.
+    private val _audioDurations =
+        MutableStateFlow<Map<String, Int>>(emptyMap())
+
     private val baseConversations = combine(
         state.unreadPrivateMessages,
         state.privateChats,
         state.nickname,
         conversationLiveIdentityState,
         com.bitchat.android.services.AppStateStore.unreadPrivateMessageCounts,
-        _peerProfileNicknames
+        _peerProfileNicknames,
+        _audioDurations
     ) { values ->
-        // The 6-flow typed combine overload does not resolve here (the
+        // The 7-flow typed combine overload does not resolve here (the
         // compiler picks the vararg overload), so unpack the values
         // explicitly. Order matches the flows above.
         @Suppress("UNCHECKED_CAST")
@@ -348,6 +357,8 @@ class ChatViewModel(
         val unreadCounts = values[4] as Map<String, Int>
         @Suppress("UNCHECKED_CAST")
         val cachedNicknames = values[5] as Map<String, String>
+        @Suppress("UNCHECKED_CAST")
+        val audioDurations = values[6] as Map<String, Int>
         val seenStore = seenMessageStore
         val connectedPeerByIdentity = buildMap {
             liveIdentity.connectedPeerIDs.forEach { peerID ->
@@ -369,7 +380,8 @@ class ChatViewModel(
                 com.bitchat.android.services.AppStateStore.isPrivateMessageRead(message.id) ||
                     seenStore.hasBeenReadLocally(message.id)
             },
-            persistedUnreadCounts = unreadCounts
+            persistedUnreadCounts = unreadCounts,
+            audioDurations = audioDurations
         ).map { summary ->
             val resolution = ContactDirectory.resolve(summary.conversationID)
             val resolvedNostrPubkey = summary.nostrPubkey
@@ -511,6 +523,7 @@ class ChatViewModel(
         ContactDirectory.initialize(getApplication()) { mesh }
         com.bitchat.android.services.AppStateStore.canonicalizePrivateChats()
         observeConversationDisplayNames()
+        observeAudioDurations()
         // Application startup performs the initial restore. Repeat it for every new UI owner
         // because a quick reopen can reuse a process whose in-memory state was cleared during
         // controlled shutdown.
@@ -690,6 +703,28 @@ class ChatViewModel(
                                 conversationPresencePeers.value - peerID
                         }
                         conversationPresenceRemovalJobs.remove(peerID)
+                    }
+                }
+            }
+        }
+    }
+
+    // Probes the length of each conversation's latest voice clip once, so
+    // the Chats preview can read "[Audio] 3\"". The probe is a header-only
+    // read (AudioDurationCache), and the result lands in _audioDurations,
+    // which the conversations combine re-emits from.
+    private fun observeAudioDurations() {
+        viewModelScope.launch {
+            state.privateChats.collect { chats ->
+                val known = _audioDurations.value
+                val latestClips = chats.values.mapNotNull { messages ->
+                    messages.filter { it.type == BitchatMessageType.Audio }
+                        .maxByOrNull { it.timestamp.time }
+                }.filter { it.id !in known }
+                for (message in latestClips) {
+                    val seconds = AudioDurationCache.probeSeconds(message.content.trim())
+                    if (seconds != null) {
+                        _audioDurations.update { it + (message.id to seconds) }
                     }
                 }
             }

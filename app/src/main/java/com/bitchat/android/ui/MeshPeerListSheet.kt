@@ -1150,7 +1150,7 @@ private fun ConversationRow(
         conversation.latestMessageType == BitchatMessageType.Image ->
             stringResource(R.string.notification_sent_image)
         conversation.latestMessageType == BitchatMessageType.Audio ->
-            stringResource(R.string.notification_sent_voice)
+            conversation.latestMessagePreview.ifBlank { "[Audio]" }
         conversation.latestMessageType == BitchatMessageType.File ->
             conversation.latestMessagePreview
                 .takeIf(String::isNotBlank)
