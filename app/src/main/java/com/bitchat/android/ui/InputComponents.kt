@@ -71,6 +71,7 @@ import androidx.compose.ui.unit.toSize
 import kotlin.math.roundToInt
 import androidx.compose.ui.unit.sp
 import com.bitchat.android.R
+import com.bitchat.android.core.ui.icon.WeChatVoiceGlyph
 import com.bitchat.android.features.voice.VoiceRecorder
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.focus.FocusRequester
@@ -437,18 +438,32 @@ fun MessageInput(
                         onBounds = { cancelBounds = it }
                     )
                 } else {
+                    // WeChat-style toggle: a circle outline holding the
+                    // glyph — the voice glyph (wedge + sound arcs, drawn
+                    // from the user's WeChat screenshot) in text mode, a
+                    // keyboard in voice mode. The plain Material mic looked
+                    // nothing like WeChat's.
+                    val toggleTint =
+                        if (voiceMode) colorScheme.primary else colorScheme.onSurfaceVariant
                     IconButton(
                         onClick = { voiceMode = !voiceMode },
                         modifier = Modifier.size(44.dp)
                     ) {
-                        Icon(
-                            imageVector = if (voiceMode) Icons.Filled.Keyboard else Icons.Filled.Mic,
-                            contentDescription = stringResource(
-                                if (voiceMode) R.string.cd_show_keyboard else R.string.cd_voice_input
-                            ),
-                            tint = if (voiceMode) colorScheme.primary else colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(24.dp)
-                        )
+                        Box(
+                            modifier = Modifier
+                                .size(24.dp)
+                                .border(1.8.dp, toggleTint, CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = if (voiceMode) Icons.Filled.Keyboard else WeChatVoiceGlyph,
+                                contentDescription = stringResource(
+                                    if (voiceMode) R.string.cd_show_keyboard else R.string.cd_voice_input
+                                ),
+                                tint = toggleTint,
+                                modifier = Modifier.size(if (voiceMode) 17.dp else 24.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -556,10 +571,14 @@ fun MessageInput(
 
                 // Voice mode: the hold-to-talk bar covers the field. Pressing and holding
                 // anywhere on it records; sliding left into the cancel disc discards.
+                // matchParentSize (not fillMaxSize): the bar must cover the field
+                // without joining the size measurement — fillMaxSize takes the
+                // full height the bottom bar allows and balloons the field
+                // to fill the screen, parking the bar in the middle of it.
                 if (voiceMode && showMediaButtons) {
                     VoiceRecordButton(
                         holdToTalk = true,
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier.matchParentSize(),
                         isRecording = isRecording,
                         recorderFactory = recorderFactory?.let { factory ->
                             { factory(latestSelectedPeer.value, latestChannel.value) }
