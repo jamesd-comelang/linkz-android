@@ -82,6 +82,20 @@ class ChatViewModel(
     companion object {
         private const val TAG = "ChatViewModel"
         private const val CONVERSATION_DISCONNECT_GRACE_MS = 3_000L
+
+        /**
+         * Map keys a peer's cached profile is stored under: the bare 16-hex
+         * fingerprint and the canonical `contact_<fingerprint>` conversation
+         * ID. Readers use whichever form they have; storing both keeps the
+         * Chats list (conversation ID) and the Contacts picker (bare peer
+         * ID) from missing each other.
+         */
+        internal fun profileCacheKeys(peerID: String): Set<String> {
+            val keys = mutableSetOf(peerID)
+            ContactIdentityResolver.contactConversationIdForFingerprint(peerID)
+                ?.let { keys += it }
+            return keys
+        }
     }
 
     fun sendVoiceNote(toPeerIDOrNull: String?, channelOrNull: String?, filePath: String) {
@@ -288,13 +302,26 @@ class ChatViewModel(
                 .mapKeys { (conversationID, _) -> conversationID.lowercase() }
         )
     }
+
+    // Cached profile nicknames of peers (background profile sync). Declared
+    // before baseConversations: the conversation flow combines this flow,
+    // and a combine input must be initialized before the flow that reads it.
+    // The display-name chain consults these when no live Bluetooth nickname
+    // exists: without them a nickname that arrived over Nostr is saved to
+    // disk and never shown anywhere.
+    private val _peerProfileNicknames =
+        MutableStateFlow<Map<String, String>>(emptyMap())
+    val peerProfileNicknames: StateFlow<Map<String, String>> =
+        _peerProfileNicknames.asStateFlow()
+
     private val baseConversations = combine(
         state.unreadPrivateMessages,
         state.privateChats,
         state.nickname,
         conversationLiveIdentityState,
-        com.bitchat.android.services.AppStateStore.unreadPrivateMessageCounts
-    ) { unreadConversationIDs, chats, currentNickname, liveIdentity, unreadCounts ->
+        com.bitchat.android.services.AppStateStore.unreadPrivateMessageCounts,
+        _peerProfileNicknames
+    ) { unreadConversationIDs, chats, currentNickname, liveIdentity, unreadCounts, cachedNicknames ->
         val seenStore = seenMessageStore
         val connectedPeerByIdentity = buildMap {
             liveIdentity.connectedPeerIDs.forEach { peerID ->
@@ -347,6 +374,9 @@ class ChatViewModel(
                     fallbackName = summary.displayName,
                     connectedPeerID = connectedPeerID,
                     peerNicknames = liveIdentity.peerNicknames,
+                    cachedProfileName = ContactIdentityResolver
+                        .fingerprintFromContactConversationId(summary.conversationID)
+                        ?.let { cachedNicknames[it] },
                     resolvedContactName = resolution.displayName,
                     persistedDisplayName = persistedDisplayName
                 ),
@@ -408,9 +438,13 @@ class ChatViewModel(
     val peerSessionStates: StateFlow<Map<String, String>> = state.peerSessionStates
     val peerFingerprints: StateFlow<Map<String, String>> = state.peerFingerprints
     val peerNicknames: StateFlow<Map<String, String>> = state.peerNicknames
-    // Cached profile photos of peers (background profile sync), keyed by peer ID.
+    // Cached profile photos of peers (background profile sync). Each photo is
+    // stored under BOTH the bare 16-hex fingerprint and the canonical
+    // `contact_<fingerprint>` conversation ID: the Chats list looks photos up
+    // by conversation ID, the Contacts picker by bare peer ID, and the two
+    // forms must not miss each other. Absent peers show the initial instead.
     // Loaded from DataManager's per-peer cache; refreshed whenever a peer's
-    // cached profile changes. Absent peers show the initial letter instead.
+    // cached profile changes.
     private val _peerPhotos =
         MutableStateFlow<Map<String, androidx.compose.ui.graphics.ImageBitmap>>(emptyMap())
     val peerPhotos: StateFlow<Map<String, androidx.compose.ui.graphics.ImageBitmap>> =
@@ -529,35 +563,72 @@ class ChatViewModel(
         
         // Removed background location notes subscription. Notes now load only when sheet opens.
 
-        // Profile sync: reload cached peer photos whenever a peer's profile
-        // changes, and load the existing cache once at startup.
+        // Profile sync: reload cached peer photos and nicknames whenever a
+        // peer's profile changes, and load the existing cache once at startup.
         viewModelScope.launch {
             try {
                 com.bitchat.android.services.ProfileSyncManager.getInstance(getApplication())
-                    .profileUpdated.collect { refreshPeerPhotos() }
+                    .profileUpdated.collect { refreshPeerProfiles() }
             } catch (_: Exception) { }
         }
-        refreshPeerPhotos()
+        refreshPeerProfiles()
     }
 
-    /** Reload cached peer photos from DataManager (disk) into [peerPhotos]. */
-    private fun refreshPeerPhotos() {
+    /**
+     * Reload cached peer photos and nicknames from DataManager (disk) into
+     * [peerPhotos] and [peerProfileNicknames].
+     *
+     * The peer set is the union of starred peers, Bluetooth-connected peers,
+     * mutual favorites, and every peer with a cached profile record. The
+     * last two matter: a friend added via Friend Code is in neither the
+     * starred set nor the connected set, so the old set (starred +
+     * connected only) left their cached photo and nickname unloaded even
+     * when the bytes were already on disk.
+     */
+    private fun refreshPeerProfiles() {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val peerIDs = (dataManager.favoritePeers + state.connectedPeers.value).toSet()
-                val photos = peerIDs.mapNotNull { peerID ->
-                    dataManager.loadPeerPhotoBitmap(peerID)?.asImageBitmap()?.let { peerID to it }
-                }.toMap()
+                val mutualFingerprints =
+                    FavoritesPersistenceService.shared.getMutualFavorites()
+                        .mapNotNull { relationship ->
+                            ContactIdentityResolver.peerIdForNoiseKey(
+                                relationship.peerNoisePublicKey
+                            )
+                        }
+                val peerIDs = (
+                    dataManager.favoritePeers +
+                        state.connectedPeers.value +
+                        dataManager.listPeerProfileIDs() +
+                        mutualFingerprints
+                    ).toSet()
+                val photos = mutableMapOf<String, androidx.compose.ui.graphics.ImageBitmap>()
+                val nicknames = mutableMapOf<String, String>()
+                for (peerID in peerIDs) {
+                    dataManager.loadPeerProfile(peerID)?.nickname
+                        ?.takeIf { it.isNotBlank() }
+                        ?.let { nickname ->
+                            for (key in profileCacheKeys(peerID)) nicknames[key] = nickname
+                        }
+                    dataManager.loadPeerPhotoBitmap(peerID)?.asImageBitmap()?.let { bitmap ->
+                        for (key in profileCacheKeys(peerID)) photos[key] = bitmap
+                    }
+                }
                 _peerPhotos.value = photos
+                _peerProfileNicknames.value = nicknames
             } catch (_: Exception) { }
         }
     }
 
-    /** Opportunistic profile fetch when opening a chat with an unknown peer. */
+    /**
+     * Opportunistic profile fetch when opening a chat. Requests with the
+     * cached version when one exists (the peer answers with the full
+     * profile only when it is newer), so a missed announce still heals on
+     * the next chat open. Same-version re-requests are cooldown-guarded.
+     */
     fun maybeFetchPeerProfile(peerID: String) {
         try {
             com.bitchat.android.services.ProfileSyncManager.getInstance(getApplication())
-                .fetchIfUnknown(peerID)
+                .fetchOnChatOpen(peerID)
         } catch (_: Exception) { }
     }
 

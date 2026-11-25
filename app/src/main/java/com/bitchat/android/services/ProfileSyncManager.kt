@@ -148,6 +148,7 @@ class ProfileSyncManager private constructor(
 
     override fun onProfileAnnounce(peerID: String, announce: ProfileSync.ProfileAnnounce) {
         if (peerID.isBlank()) return
+        Log.d(TAG, "Announce from ${peerID.take(8)}: v${announce.version} '${announce.nickname}'")
         if (!isStale(peerID, announce.version, announce.photoHashHex)) return
         // The announce itself carries the nickname: cache the nickname now so
         // the name updates even if the photo fetch fails or is still running.
@@ -210,7 +211,9 @@ class ProfileSyncManager private constructor(
         val transport = NostrTransport.getInstance(appContext)
         val senderPeerID = transport.myPeerID
         if (senderPeerID.isBlank()) return
-        val request = ProfileSync.encodeRequest(cachedRecord(peerID)?.version ?: 0L)
+        val cachedVersion = cachedRecord(peerID)?.version ?: 0L
+        Log.d(TAG, "Requesting profile from ${peerID.take(8)} (have v$cachedVersion)")
+        val request = ProfileSync.encodeRequest(cachedVersion)
         val embedded = NostrEmbeddedBitChat.encodeProfilePacketForNostr(
             NoisePayloadType.PROFILE_REQUEST, request, peerID, senderPeerID
         ) ?: return
@@ -219,19 +222,21 @@ class ProfileSyncManager private constructor(
     }
 
     /**
-     * Opportunistic fetch for a peer with no cached profile at all (e.g. when
-     * opening the chat). Only the Nostr route is tried here; BLE peers are
-     * covered by the announcement path, which sends the request itself.
+     * Opportunistic fetch when a chat is opened. Requests with the cached
+     * version when one exists — the peer answers with the full profile only
+     * when its version is newer, and with just an announce when it is
+     * current — so a missed announce still heals on the next chat open.
+     * Same-version re-requests are cooldown-guarded in [fetchOverNostr].
      */
-    fun fetchIfUnknown(peerID: String) {
+    fun fetchOnChatOpen(peerID: String) {
         if (peerID.isBlank()) return
-        if (cachedRecord(peerID) != null) return
         fetchOverNostr(peerID, Long.MAX_VALUE, null)
     }
 
     /** Reply to a PROFILE_REQUEST that arrived over Nostr (chunked when it carries a photo). */
     fun replyOverNostr(peerID: String, cachedVersion: Long) {
         val (type, bytes) = replyForRequest(peerID, cachedVersion) ?: return
+        Log.d(TAG, "Replying to profile request from ${peerID.take(8)}: $type (have v${ownVersion()}, peer has v$cachedVersion)")
         scope.launch {
             try {
                 val transport = NostrTransport.getInstance(appContext)
@@ -298,7 +303,9 @@ class ProfileSyncManager private constructor(
                 val transport = NostrTransport.getInstance(appContext)
                 val senderPeerID = transport.myPeerID
                 if (senderPeerID.isBlank()) return@launch
-                for (peerID in announceRecipientPeerIDs()) {
+                val recipients = announceRecipientPeerIDs()
+                Log.d(TAG, "Announcing profile v${ownVersion()} '${ownNickname()}' to ${recipients.size} peers")
+                for (peerID in recipients) {
                     val embedded = NostrEmbeddedBitChat.encodeProfilePacketForNostr(
                         NoisePayloadType.PROFILE_ANNOUNCE, announce, peerID, senderPeerID
                     ) ?: continue

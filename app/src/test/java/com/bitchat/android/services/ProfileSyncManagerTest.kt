@@ -154,4 +154,28 @@ class ProfileSyncManagerTest {
         val recipients = manager.announceRecipientPeerIDs(setOf("0123456789abcdef"), emptyList())
         assertEquals(setOf("0123456789abcdef"), recipients)
     }
+
+    /**
+     * The display fix needs this enumeration: friends added via Friend Code
+     * are in neither DataManager.favoritePeers nor the BLE connected set,
+     * so the photo/name loader must find them through their cached profile
+     * records instead.
+     */
+    @Test
+    fun `listPeerProfileIDs enumerates cached profiles`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val dataManager = DataManager(context)
+
+        assertTrue(dataManager.listPeerProfileIDs().isEmpty())
+
+        dataManager.savePeerProfile("0123456789abcdef", "Alice", 1L, null, ByteArray(0))
+        dataManager.savePeerProfile("fedcba9876543210", "Bob", 1L, null, ByteArray(0))
+        assertEquals(
+            setOf("0123456789abcdef", "fedcba9876543210"),
+            dataManager.listPeerProfileIDs()
+        )
+
+        dataManager.deletePeerProfile("0123456789abcdef")
+        assertEquals(setOf("fedcba9876543210"), dataManager.listPeerProfileIDs())
+    }
 }

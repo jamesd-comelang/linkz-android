@@ -198,6 +198,19 @@ class DataManager(private val context: Context) {
     }
 
     /**
+     * Peer IDs (bare 16-hex fingerprints) with a cached profile record.
+     * The photo/name loader needs this enumeration: friends added via Friend
+     * Code are in neither [favoritePeers] (starred only) nor the BLE
+     * connected set, so without it their cached photos and nicknames never
+     * reach the UI even when the bytes are on disk.
+     */
+    fun listPeerProfileIDs(): Set<String> {
+        return prefs.all.keys
+            .filter { it.startsWith("peer_profile_") }
+            .mapTo(mutableSetOf()) { it.removePrefix("peer_profile_") }
+    }
+
+    /**
      * Cache a peer's fetched profile. Photo bytes are stored in a file so the
      * (up to 256 KiB) JPEG never sits in SharedPreferences. A null [photoBytes]
      * keeps any previously cached photo file (the peer has no photo).

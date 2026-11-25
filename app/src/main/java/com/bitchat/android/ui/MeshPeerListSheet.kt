@@ -1715,6 +1715,9 @@ fun PrivateChatContent(
     val favoritePeers by viewModel.favoritePeers.collectAsStateWithLifecycle()
     val peerFavoritedUs by viewModel.peerFavoritedUs.collectAsStateWithLifecycle()
     val peerFingerprints by viewModel.peerFingerprints.collectAsStateWithLifecycle()
+    // Cached profile photos and nicknames of peers (background profile sync).
+    val peerPhotos by viewModel.peerPhotos.collectAsStateWithLifecycle()
+    val peerProfileNicknames by viewModel.peerProfileNicknames.collectAsStateWithLifecycle()
 
     val contactResolution = remember(peerID, connectedPeers, favoritePeers) {
         ContactDirectory.resolve(peerID)
@@ -1740,9 +1743,14 @@ fun PrivateChatContent(
         !isConnected && favoriteRelationship?.isMutual == true && favoriteRelationship.peerNostrPublicKey != null
 
     // Compute display name and title text reactively
-    val displayName = remember(peerID, peerNicknames, favoriteRelationship) {
+    val displayName = remember(peerID, peerNicknames, favoriteRelationship, peerProfileNicknames) {
         peerNicknames[peerID]
             ?: activeMeshPeerID?.let { peerNicknames[it] }
+            // Nickname from the peer's synced profile cache. Beats the
+            // favorite record below, which is frozen at the time the friend
+            // was added; a nickname that arrived over Nostr lives here.
+            ?: peerProfileNicknames[peerID]
+            ?: peerProfileNicknames[contactResolution.conversationID]
             ?: contactResolution.displayName
             ?: favoriteRelationship?.peerNickname?.takeIf { it.isNotBlank() && !it.equals("Unknown", ignoreCase = true) }
             ?: viewModel.resolvePeerDisplayNameForFingerprint(peerID)
@@ -1815,6 +1823,8 @@ fun PrivateChatContent(
                         meshService = viewModel.meshServiceFacade,
                         modifier = Modifier.weight(1f),
                         conversationKey = "dm:$peerID",
+                        peerPhoto = peerPhotos[conversationID] ?: peerPhotos[peerID],
+                        ownPhoto = viewModel.loadAvatarBitmap(),
                         forceScrollToBottom = forceScrollToBottom,
                         onScrolledUpChanged = { isUp -> isScrolledUp = isUp },
                         onNicknameClick = { /* handle mention */ },

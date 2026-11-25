@@ -244,7 +244,15 @@ fun MessagesList(
     onNicknameClick: ((String) -> Unit)? = null,
     onMessageLongPress: ((BitchatMessage) -> Unit)? = null,
     onCancelTransfer: ((BitchatMessage) -> Unit)? = null,
-    onImageClick: ((String, List<String>, Int) -> Unit)? = null
+    onImageClick: ((String, List<String>, Int) -> Unit)? = null,
+    /**
+     * Cached profile photo of the other party in a 1:1 DM (background
+     * profile sync), shown beside their messages. Null in channels and
+     * group chats, where one photo cannot stand for every sender.
+     */
+    peerPhoto: androidx.compose.ui.graphics.ImageBitmap? = null,
+    /** Our own cached profile photo, shown beside our messages. */
+    ownPhoto: androidx.compose.ui.graphics.ImageBitmap? = null
 ) {
     val resolvedMentionPeerIdentities = mentionPeerIdentities
         ?: rememberMentionPeerIdentities(messages, conversationKey = conversationKey)
@@ -403,6 +411,8 @@ fun MessagesList(
                 showSender = !isGrouped,
                 bubbles = bubbles.isBubbles,
                 spamVerdict = spamFlags[message.id],
+                peerPhoto = peerPhoto,
+                ownPhoto = ownPhoto,
                 topSpacing = MessageGrouping.topSpacingFor(
                     isGrouped = isGrouped,
                     isFirstInList = originalIndex == 0
@@ -447,6 +457,10 @@ fun MessageItem(
     onImageClick: ((String, List<String>, Int) -> Unit)? = null,
     /** WeChat-style centered date/time line above this message, or null when the gap is short. */
     dateSeparatorText: String? = null,
+    /** Cached profile photo of the other party in a 1:1 DM; null in channels. */
+    peerPhoto: androidx.compose.ui.graphics.ImageBitmap? = null,
+    /** Our own cached profile photo. */
+    ownPhoto: androidx.compose.ui.graphics.ImageBitmap? = null,
     modifier: Modifier = Modifier
 ) {
     val colorScheme = MaterialTheme.colorScheme
@@ -519,7 +533,8 @@ fun MessageItem(
                         color = colorForPeer(peerIdentityForMessage(message), palette),
                         // Square like the home screen's LinkzAvatar, not circular.
                         shape = RoundedCornerShape(6.dp),
-                        fontFamily = FontFamily.Default
+                        fontFamily = FontFamily.Default,
+                        photo = peerPhoto
                     )
                     Spacer(Modifier.width(8.dp))
                 } else if (isFailed) {
@@ -550,7 +565,8 @@ fun MessageItem(
                         color = palette.accentOrange,
                         // Square like the home screen's LinkzAvatar, not circular.
                         shape = RoundedCornerShape(6.dp),
-                        fontFamily = FontFamily.Default
+                        fontFamily = FontFamily.Default,
+                        photo = ownPhoto
                     )
                 } else if (isFailed) {
                     Spacer(Modifier.width(8.dp))

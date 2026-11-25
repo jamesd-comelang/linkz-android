@@ -484,12 +484,14 @@ private fun LinkzChatsTab(
     var showAddByInviteDialog by remember { mutableStateOf(false) }
     // Cached profile photos of peers (background profile sync).
     val peerPhotos by viewModel.peerPhotos.collectAsStateWithLifecycle()
+    // Cached profile nicknames of peers (background profile sync).
+    val peerProfileNicknames by viewModel.peerProfileNicknames.collectAsStateWithLifecycle()
     // Same people list as the Contacts tab: nearby peers plus past
     // conversations, deduped, blocked peers left out. Powers both the
     // New Chat picker and Add by ID matching.
     val people = remember(
         connectedPeers, peerNicknames, peerFingerprints,
-        conversations, remarksTick
+        conversations, remarksTick, peerProfileNicknames
     ) {
         val fromPeers = connectedPeers
             .filter { !viewModel.isPeerBlocked(it) }
@@ -497,11 +499,14 @@ private fun LinkzChatsTab(
                 val remark = viewModel.getRemark(peerID)
                 LinkzContact(
                     id = peerID,
-                    displayName = remark ?: peerNicknames[peerID] ?: peerID.take(12),
+                    displayName = remark ?: peerNicknames[peerID]
+                        ?: peerProfileNicknames[peerID] ?: peerID.take(12),
                     isConnected = true,
                     fingerprint = peerFingerprints[peerID],
                     remark = remark,
-                    nickname = if (remark != null) peerNicknames[peerID] else null
+                    nickname = if (remark != null) {
+                        peerNicknames[peerID] ?: peerProfileNicknames[peerID]
+                    } else null
                 )
             }
         val fromConversations = conversations.map { summary ->
@@ -1027,13 +1032,17 @@ private fun LinkzContactsTab(
     // to recompute the list below.
     var blockTick by remember { mutableStateOf(0) }
     val verifiedFingerprints by viewModel.verifiedFingerprints.collectAsStateWithLifecycle()
+    // Cached profile nicknames of peers (background profile sync).
+    val peerProfileNicknames by viewModel.peerProfileNicknames.collectAsStateWithLifecycle()
     val baseContacts = remember(
         connectedPeers, peerNicknames, favoritePeers, peerFingerprints,
-        conversations, verifiedFingerprints, blockTick, remarksTick
+        conversations, verifiedFingerprints, blockTick, remarksTick,
+        peerProfileNicknames
     ) {
         val fromPeers = connectedPeers.map { peerID ->
             val fingerprint = peerFingerprints[peerID]
-            val nickname = peerNicknames[peerID] ?: peerID.take(12)
+            val nickname = peerNicknames[peerID]
+                ?: peerProfileNicknames[peerID] ?: peerID.take(12)
             val remark = viewModel.getRemark(peerID)
             LinkzContact(
                 id = peerID,

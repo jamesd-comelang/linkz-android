@@ -138,7 +138,12 @@ internal fun resolveConversationDisplayName(
     connectedPeerID: String?,
     peerNicknames: Map<String, String>,
     resolvedContactName: String?,
-    persistedDisplayName: String?
+    persistedDisplayName: String?,
+    // Nickname from the peer's synced profile cache (background profile
+    // sync). Beats the favorite/persisted names, which are frozen at the
+    // time the friend was added; loses to a live Bluetooth nickname, which
+    // is the same value from the same peer over the live transport.
+    cachedProfileName: String? = null
 ): String {
     fun String?.usableName(): String? = this?.takeUnless {
         it.isBlank() || it.equals("Unknown", ignoreCase = true)
@@ -153,6 +158,7 @@ internal fun resolveConversationDisplayName(
                 ?.value
     }
     return liveName.usableName()
+        ?: cachedProfileName.usableName()
         ?: resolvedContactName.usableName()
         ?: persistedDisplayName.usableName()
         ?: fallbackName
