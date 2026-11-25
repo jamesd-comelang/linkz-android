@@ -233,6 +233,92 @@ class ConversationSummaryTest {
         assertEquals(47, conversation.unreadCount)
     }
 
+    // Cached-profile display names (background profile sync): a nickname
+    // that arrived over Nostr is saved to the profile cache, and the Chats
+    // list must show it. The favorite record is frozen at the time the
+    // friend was added, so the cached profile name has to beat it — while a
+    // live Bluetooth nickname (the same value over the live transport)
+    // still wins.
+
+    @Test
+    fun `cached profile name beats favorite and persisted names`() {
+        assertEquals(
+            "Alice Synced",
+            resolveConversationDisplayName(
+                fallbackName = "Alice From Message",
+                connectedPeerID = null,
+                peerNicknames = emptyMap(),
+                resolvedContactName = "Alice Favorite Snapshot",
+                persistedDisplayName = "Alice Persisted",
+                cachedProfileName = "Alice Synced"
+            )
+        )
+    }
+
+    @Test
+    fun `live Bluetooth nickname beats cached profile name`() {
+        assertEquals(
+            "Alice Renamed",
+            resolveConversationDisplayName(
+                fallbackName = "Alice From Message",
+                connectedPeerID = "peer-a",
+                peerNicknames = mapOf("peer-a" to "Alice Renamed"),
+                resolvedContactName = "Alice Favorite Snapshot",
+                persistedDisplayName = "Alice Persisted",
+                cachedProfileName = "Alice Synced"
+            )
+        )
+    }
+
+    @Test
+    fun `blank or Unknown cached name falls through`() {
+        assertEquals(
+            "Alice Favorite Snapshot",
+            resolveConversationDisplayName(
+                fallbackName = "Alice From Message",
+                connectedPeerID = null,
+                peerNicknames = emptyMap(),
+                resolvedContactName = "Alice Favorite Snapshot",
+                persistedDisplayName = "Alice Persisted",
+                cachedProfileName = "Unknown"
+            )
+        )
+        assertEquals(
+            "Alice Favorite Snapshot",
+            resolveConversationDisplayName(
+                fallbackName = "Alice From Message",
+                connectedPeerID = null,
+                peerNicknames = emptyMap(),
+                resolvedContactName = "Alice Favorite Snapshot",
+                persistedDisplayName = "Alice Persisted",
+                cachedProfileName = "  "
+            )
+        )
+    }
+
+    @Test
+    fun `no names at all falls back to latest message sender`() {
+        assertEquals(
+            "Alice From Message",
+            resolveConversationDisplayName(
+                fallbackName = "Alice From Message",
+                connectedPeerID = null,
+                peerNicknames = emptyMap(),
+                resolvedContactName = null,
+                persistedDisplayName = null,
+                cachedProfileName = null
+            )
+        )
+    }
+
+    @Test
+    fun `profile cache keys cover bare fingerprint and contact conversation id`() {
+        assertEquals(
+            setOf("abcdef0123456789", "contact_abcdef0123456789"),
+            ChatViewModel.profileCacheKeys("abcdef0123456789")
+        )
+    }
+
     private fun incoming(
         id: String,
         sender: String,
