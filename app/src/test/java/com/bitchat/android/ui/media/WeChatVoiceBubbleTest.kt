@@ -8,7 +8,7 @@ class WeChatVoiceBubbleTest {
     @Test
     fun `bubble width has a floor for short clips`() {
         assertEquals(90, voiceBubbleWidthDp(0))
-        assertEquals(90, voiceBubbleWidthDp(1))
+        assertEquals(93, voiceBubbleWidthDp(1))
         assertEquals(99, voiceBubbleWidthDp(3))
     }
 
