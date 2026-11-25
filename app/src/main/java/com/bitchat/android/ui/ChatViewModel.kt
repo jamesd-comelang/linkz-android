@@ -84,16 +84,21 @@ class ChatViewModel(
         private const val CONVERSATION_DISCONNECT_GRACE_MS = 3_000L
 
         /**
-         * Map keys a peer's cached profile is stored under: the bare 16-hex
-         * fingerprint and the canonical `contact_<fingerprint>` conversation
-         * ID. Readers use whichever form they have; storing both keeps the
-         * Chats list (conversation ID) and the Contacts picker (bare peer
-         * ID) from missing each other.
+         * Map keys a peer's cached profile is stored under: the bare peer
+         * ID and its canonical conversation ID, resolved through the
+         * contact directory (a 16-hex mesh peer ID maps to a
+         * `contact_<64-hex fingerprint>` conversation ID via the
+         * favorites record; an ID with no record keeps just the bare
+         * form). Readers use whichever form they have; storing both
+         * keeps the Chats list (conversation ID) and the Contacts picker
+         * (bare peer ID) from missing each other. NOTE: do not use
+         * contactConversationIdForFingerprint here — it takes a 64-hex
+         * fingerprint, and every peer ID in the loader is a 16-hex mesh
+         * peer ID, for which it returns null.
          */
         internal fun profileCacheKeys(peerID: String): Set<String> {
             val keys = mutableSetOf(peerID)
-            ContactIdentityResolver.contactConversationIdForFingerprint(peerID)
-                ?.let { keys += it }
+            ContactDirectory.canonicalConversationId(peerID).let { keys += it }
             return keys
         }
     }
@@ -387,9 +392,11 @@ class ChatViewModel(
                     fallbackName = summary.displayName,
                     connectedPeerID = connectedPeerID,
                     peerNicknames = liveIdentity.peerNicknames,
-                    cachedProfileName = ContactIdentityResolver
-                        .fingerprintFromContactConversationId(summary.conversationID)
-                        ?.let { cachedNicknames[it] },
+                    // The canonical conversation ID is itself a key in the
+                    // cached-nickname map (see profileCacheKeys), so this
+                    // hits whether the conversation id is the contact_ form
+                    // or a bare peer id.
+                    cachedProfileName = cachedNicknames[summary.conversationID],
                     resolvedContactName = resolution.displayName,
                     persistedDisplayName = persistedDisplayName
                 ),

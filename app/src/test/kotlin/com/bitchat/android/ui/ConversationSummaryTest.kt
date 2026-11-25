@@ -2,12 +2,14 @@ package com.bitchat.android.ui
 
 import com.bitchat.android.model.BitchatMessage
 import com.bitchat.android.model.BitchatMessageType
+import com.bitchat.android.services.ContactIdentityResolver
 import com.bitchat.android.services.PrivateMessageArrivalOrder
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.security.MessageDigest
 import java.util.Date
 
 class ConversationSummaryTest {
@@ -312,10 +314,26 @@ class ConversationSummaryTest {
     }
 
     @Test
-    fun `profile cache keys cover bare fingerprint and contact conversation id`() {
+    fun `profile cache keys cover bare id and canonical conversation id`() {
+        // A 64-hex Noise key resolves deterministically to its contact_
+        // conversation id (SHA-256 of the key bytes), with no favorites
+        // record needed. The expected fingerprint is computed here with
+        // MessageDigest, not with the production helper.
+        val noiseKeyHex = "ab".repeat(32)
+        val keyBytes = ContactIdentityResolver.bytesFromHex(noiseKeyHex)!!
+        val fingerprint = MessageDigest.getInstance("SHA-256").digest(keyBytes)
+            .joinToString("") { "%02x".format(it.toInt() and 0xFF) }
         assertEquals(
-            setOf("abcdef0123456789", "contact_abcdef0123456789"),
-            ChatViewModel.profileCacheKeys("abcdef0123456789")
+            setOf(noiseKeyHex, "contact_$fingerprint"),
+            ChatViewModel.profileCacheKeys(noiseKeyHex)
+        )
+        // A bare 16-hex mesh peer id with no favorites record has no
+        // other canonical form, so only itself is stored. (A 16-hex id
+        // is the first 16 chars of the 64-hex fingerprint — never pass
+        // it to contactConversationIdForFingerprint, which needs all 64.)
+        assertEquals(
+            setOf("0123456789abcdef"),
+            ChatViewModel.profileCacheKeys("0123456789abcdef")
         )
     }
 
