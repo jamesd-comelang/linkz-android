@@ -32,23 +32,25 @@ val WeChatVoiceGlyph: ImageVector
                 lineTo(11.6f, 12.0f)
                 close()
             }
-            // Inner arc.
+            // Inner arc. A quadratic arc, degree-elevated to the cubic
+            // curveTo the vector path DSL actually has (PathBuilder has no
+            // quadratic method): C1 = P0 + 2/3(Q - P0), C2 = P3 + 2/3(Q - P3).
             path(
                 stroke = SolidColor(Color.Black),
                 strokeLineWidth = 1.8f,
                 strokeLineCap = StrokeCap.Round,
             ) {
                 moveTo(13.8f, 9.0f)
-                quadraticBezierTo(16.6f, 12.0f, 13.8f, 15.0f)
+                curveTo(15.67f, 11.0f, 15.67f, 13.0f, 13.8f, 15.0f)
             }
-            // Outer arc.
+            // Outer arc, same conversion.
             path(
                 stroke = SolidColor(Color.Black),
                 strokeLineWidth = 1.8f,
                 strokeLineCap = StrokeCap.Round,
             ) {
                 moveTo(16.2f, 6.6f)
-                quadraticBezierTo(20.0f, 12.0f, 16.2f, 17.4f)
+                curveTo(18.73f, 10.2f, 18.73f, 13.8f, 16.2f, 17.4f)
             }
         }.build().also { _WeChatVoiceGlyph = it }
     }
