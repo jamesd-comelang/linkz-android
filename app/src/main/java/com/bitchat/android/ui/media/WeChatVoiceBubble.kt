@@ -23,7 +23,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
@@ -78,30 +77,34 @@ fun VoiceSpeakerIcon(
     val arcs = if (playing) phase + 1 else 2
     val flip = if (flipped) Modifier.graphicsLayer(scaleX = -1f) else Modifier
     Canvas(modifier = modifier.then(flip).size(20.dp)) {
+        // Scale the glyph's 24-space coordinates into canvas pixels by hand.
+        // The wedge and both arcs are centred on 12 in that space, so after
+        // scaling they land centred in the canvas. Do NOT use DrawScope.scale()
+        // here: it pivots around the canvas centre in pixels, but the path
+        // coordinates live near the origin of the 24-space, so the glyph is
+        // thrown off the top edge and only a sliver shows in the corner.
         val s = size.minDimension / 24f
-        scale(s) {
-            val wedge = Path().apply {
-                moveTo(7.8f, 9.0f)
-                lineTo(7.8f, 15.0f)
-                lineTo(11.6f, 12.0f)
-                close()
+        val wedge = Path().apply {
+            moveTo(7.8f * s, 9.0f * s)
+            lineTo(7.8f * s, 15.0f * s)
+            lineTo(11.6f * s, 12.0f * s)
+            close()
+        }
+        drawPath(wedge, tint)
+        val stroke = Stroke(width = 1.8f * s, cap = StrokeCap.Round)
+        if (arcs >= 1) {
+            val arc1 = Path().apply {
+                moveTo(13.8f * s, 9.0f * s)
+                cubicTo(15.67f * s, 11.0f * s, 15.67f * s, 13.0f * s, 13.8f * s, 15.0f * s)
             }
-            drawPath(wedge, tint)
-            val stroke = Stroke(width = 1.8f, cap = StrokeCap.Round)
-            if (arcs >= 1) {
-                val arc1 = Path().apply {
-                    moveTo(13.8f, 9.0f)
-                    cubicTo(15.67f, 11.0f, 15.67f, 13.0f, 13.8f, 15.0f)
-                }
-                drawPath(arc1, tint, style = stroke)
+            drawPath(arc1, tint, style = stroke)
+        }
+        if (arcs >= 2) {
+            val arc2 = Path().apply {
+                moveTo(16.2f * s, 6.6f * s)
+                cubicTo(18.73f * s, 10.2f * s, 18.73f * s, 13.8f * s, 16.2f * s, 17.4f * s)
             }
-            if (arcs >= 2) {
-                val arc2 = Path().apply {
-                    moveTo(16.2f, 6.6f)
-                    cubicTo(18.73f, 10.2f, 18.73f, 13.8f, 16.2f, 17.4f)
-                }
-                drawPath(arc2, tint, style = stroke)
-            }
+            drawPath(arc2, tint, style = stroke)
         }
     }
 }
