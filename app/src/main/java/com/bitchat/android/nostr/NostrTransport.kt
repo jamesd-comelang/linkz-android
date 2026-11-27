@@ -105,7 +105,22 @@ class NostrTransport(
                 
                 giftWraps.forEach { event ->
                     NostrRelayManager.registerPendingGiftWrap(event.id)
-                    NostrRelayManager.getInstance(context).sendEvent(event)
+                    NostrRelayManager.getInstance(context).sendEvent(event) { result ->
+                        // Relay acceptance is the only delivery signal Nostr gives:
+                        // it proves a relay stored the gift wrap, not that the
+                        // recipient read it. Logged so relay problems stop being
+                        // invisible; no message status changes on it.
+                        when (result) {
+                            is RelayAckResult.Accepted ->
+                                Log.i(TAG, "DM gift wrap accepted by relay ${result.relayUrl}")
+                            is RelayAckResult.Rejected ->
+                                Log.w(TAG, "DM gift wrap rejected by all relays: ${result.reason}")
+                            RelayAckResult.Timeout ->
+                                Log.w(TAG, "DM gift wrap: no relay answered within ${NostrRelayManager.RELAY_ACK_TIMEOUT_MS}ms")
+                            RelayAckResult.NoRelayConnected ->
+                                Log.w(TAG, "DM gift wrap: no relay connected at send time")
+                        }
+                    }
                 }
 
             } catch (e: Exception) {

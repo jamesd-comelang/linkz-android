@@ -27,6 +27,14 @@ class NostrRelayManager private constructor() {
         
         private const val TAG = "NostrRelayManager"
         private const val MAX_QUEUED_EVENTS = 500
+
+        /**
+         * How long [sendEvent] waits for a relay OK (NIP-20) before reporting
+         * [RelayAckResult.Timeout] to an ack callback. Relay OKs normally arrive
+         * in well under a second; 10s leaves room for slow mobile networks
+         * without letting a dead relay hold the callback hostage.
+         */
+        const val RELAY_ACK_TIMEOUT_MS = 10_000L
         const val OWNER_LEGACY = "legacy"
         const val OWNER_BACKGROUND = "background"
         
@@ -90,6 +98,10 @@ class NostrRelayManager private constructor() {
     
     // Persistent subscription tracking for robust reconnection
     private val activeSubscriptions = ConcurrentHashMap<String, SubscriptionInfo>() // subscription ID -> info
+
+    // One-shot relay-ack callbacks, keyed by event ID. Resolved by the OK branch
+    // of handleMessage; see sendEvent for the registration side.
+    private val relayAckTracker = RelayAckTracker()
     
     /**
      * Information about an active subscription that needs to be maintained across reconnections
@@ -486,12 +498,24 @@ class NostrRelayManager private constructor() {
     }
     
     /**
-     * Send an event to specified relays (or all if none specified)
+     * Send an event to specified relays (or all if none specified).
+     *
+     * @param onRelayAck optional one-shot callback reporting relay acceptance
+     * (NIP-20 OK). First acceptance from any relay wins; if every relay the
+     * event was written to rejects it, [RelayAckResult.Rejected] fires; if no
+     * relay answers within [RELAY_ACK_TIMEOUT_MS], [RelayAckResult.Timeout]
+     * fires. If no relay was connected at send time,
+     * [RelayAckResult.NoRelayConnected] fires immediately — the queue may still
+     * retry the event on reconnect, but that retry carries no callback. The
+     * callback fires on the relay manager's IO scope or a relay socket thread,
+     * never on Main; it must not touch UI directly. Relay acceptance proves the
+     * relay stored the event — it says nothing about the recipient reading it.
      */
     fun sendEvent(
         event: NostrEvent,
         relayUrls: List<String>? = null,
-        liveLocationToken: Long? = null
+        liveLocationToken: Long? = null,
+        onRelayAck: ((RelayAckResult) -> Unit)? = null
     ) {
         val targetRelays = (relayUrls ?: relaysList.map { it.url })
             .filter { it.isNotBlank() }
@@ -506,11 +530,23 @@ class NostrRelayManager private constructor() {
             ) ?: return@runNetworkAction
             scope.launch {
                 if (!isNetworkActionAllowed(liveLocationToken)) return@launch
+                val writtenRelays = mutableSetOf<String>()
                 targetRelays.forEach { relayUrl ->
                     val webSocket = connections[relayUrl]
                     if (webSocket != null) {
                         if (sendToRelay(event, webSocket, relayUrl, liveLocationToken)) {
                             messageQueue.markDelivered(queueId, relayUrl)
+                            writtenRelays.add(relayUrl)
+                        }
+                    }
+                }
+                if (onRelayAck != null) {
+                    if (writtenRelays.isEmpty()) {
+                        onRelayAck(RelayAckResult.NoRelayConnected)
+                    } else if (relayAckTracker.register(event.id, writtenRelays, onRelayAck)) {
+                        scope.launch {
+                            delay(RELAY_ACK_TIMEOUT_MS)
+                            relayAckTracker.onTimeout(event.id)
                         }
                     }
                 }
@@ -1017,7 +1053,10 @@ class NostrRelayManager private constructor() {
                     if (!response.accepted) {
                         val level = if (wasGiftWrap) Log.WARN else Log.ERROR
                         Log.println(level, TAG, "Event rejected by relay $relayUrl: ${response.message ?: "no reason"}")
+                    } else {
+                        Log.d(TAG, "Event accepted by relay $relayUrl: ${response.eventId}")
                     }
+                    relayAckTracker.onOk(response.eventId, relayUrl, response.accepted, response.message)
                 }
 
                 is NostrResponse.Notice -> {
